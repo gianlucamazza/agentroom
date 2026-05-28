@@ -56,7 +56,9 @@ jobs:
             -e HMAC_SECRET=testonly_hmac_secret_minimum_32_chars \
             -p 8787:8787 \
             agentroom:ci
-          sleep 3
-          curl -fsS http://localhost:8787/health | jq -e '.ok == true' >/dev/null
+          for i in $(seq 1 15); do
+            curl -fsS http://localhost:8787/health | jq -e '.ok == true' >/dev/null && break
+            sleep 2
+          done
           docker logs agentroom-ci
           docker stop agentroom-ci

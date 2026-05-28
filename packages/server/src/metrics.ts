@@ -1,5 +1,8 @@
 const counters = new Map<string, number>();
 
+// Bug 3 fix: initialize baseline counters so /metrics is consistent from cold start
+counters.set("ws_connections", 0);
+
 export function inc(name: string, by = 1) {
   counters.set(name, (counters.get(name) ?? 0) + by);
 }

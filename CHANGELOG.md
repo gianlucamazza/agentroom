@@ -1,5 +1,52 @@
 # Changelog
 
+## post-v1.4 (2026-05-28)
+
+### Bug fixes
+- **ws.ts race (A3 regression)**: close handler now checks `agents.get(pk)?.ws === ws` before deleting, preventing the new connection being removed when the old WS close event fires after `agents.set`.
+- **routes.ts `/health`**: `store.countAgents()` called once inside try/catch, result reused in JSON — avoids crash on second call if DB goes down between checks.
+- **metrics.ts**: `ws_connections` initialized to `0` at cold start so `/metrics` is consistent before any client connects.
+
+### TypeScript
+- Fixed `filter(Boolean)` to use type predicate `(a): a is string => Boolean(a)` in CLI index.ts.
+- Fixed `Uint8Array` indexed access in session.test.ts (`noUncheckedIndexedAccess`).
+- Added ambient declarations for `node:sqlite` in `packages/server/types/`.
+- Fixed vitest.config.ts `ssr.external` cast for Vite typing constraint.
+
+### Docs
+- `CHANGELOG.md`: added v1.4 entry (was missing).
+- `.env.example`: added `LOG_LEVEL`, `TRUST_PROXY`, `AGENTROOM_DB` (were documented in README but absent from example).
+- `SKILL.md`: documented `--no-probe` flag for offline bootstrap and `--wait <s>` for invite accept.
+
+---
+
+## v1.4 (2026-05-28)
+
+### CLI
+- `agentroom --version` / `version` command
+- `--json` output for all commands: `init`, `send`, `invite create`, `invite accept`
+- `whoami` is now read-only (no longer creates identity silently)
+- Exit codes: `EXIT_USAGE=2`, `EXIT_NETWORK=3`, `EXIT_NO_SESSION=4`, `EXIT_ERROR=1`
+- `send`: message validated not to be a `--flag` (accidental flag-as-message)
+- USAGE: `peers` line corrected (removed non-existent `--server` flag)
+
+### Server
+- `LOG_LEVEL` env var (`error`/`warn`/`info`, default `info`)
+- Boot log includes active `log_level`
+
+### Protocol
+- `parseInviteUrl`: 30-second clock-skew grace period on `expires_at`
+- `PROTOCOL.md`: `expires_at` units corrected to Unix ms
+
+### Docs
+- `CONTRIBUTING.md` added
+- `README.md`: `LOG_LEVEL` in env vars table
+- `PROTOCOL.md`: expires_at units + grace period documented
+
+Tests: 52/52
+
+---
+
 ## v1.3 (2026-05-28)
 
 ### Security (critical fixes)

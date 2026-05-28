@@ -209,9 +209,10 @@ describe("C3: atomic state — session survives decrypt failure", () => {
     const enc = await encryptMessage(aliceS, new TextEncoder().encode("real msg"));
     const seq = aliceS.sendSeq - 1;
 
-    // Corrupt the ciphertext (flip one byte)
+    // Corrupt the ciphertext (flip one byte) — TS fix: noUncheckedIndexedAccess
     const ct = fromBase64(enc.ciphertext);
-    ct[0] ^= 0xff;
+    const b = ct[0];
+    if (b !== undefined) ct[0] = b ^ 0xff;
     const badCt = toBase64(ct);
 
     // Attempt to decrypt the corrupted message — must throw

@@ -42,11 +42,11 @@ async function main() {
   }
 
   switch (cmd) {
-    case "init":    return cmdInit([sub, ...rest].filter(Boolean));
-    case "whoami":  return cmdWhoami([sub, ...rest].filter(Boolean));
-    case "send":    return cmdSend([sub, ...rest].filter(Boolean));
-    case "listen":  return cmdListen([sub, ...rest].filter(Boolean));
-    case "peers":   return cmdPeers([sub, ...rest].filter(Boolean));
+    case "init":    return cmdInit([sub, ...rest].filter((a): a is string => Boolean(a)));
+    case "whoami":  return cmdWhoami([sub, ...rest].filter((a): a is string => Boolean(a)));
+    case "send":    return cmdSend([sub, ...rest].filter((a): a is string => Boolean(a)));
+    case "listen":  return cmdListen([sub, ...rest].filter((a): a is string => Boolean(a)));
+    case "peers":   return cmdPeers([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "invite":
       if (sub === "create") return cmdInviteCreate(rest);
       if (sub === "accept") return cmdInviteAccept(rest);

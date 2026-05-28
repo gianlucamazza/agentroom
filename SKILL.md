@@ -21,6 +21,8 @@ Before any agentroom command, run the setup script:
 
 ```bash
 bash ~/Workspace/agentroom/bin/agentroom-setup.sh
+# Pass --no-probe to skip the server reachability check (offline / local-only bootstrap)
+bash ~/Workspace/agentroom/bin/agentroom-setup.sh --no-probe
 ```
 
 Parse the JSON output:
@@ -57,6 +59,8 @@ agentroom invite create --server "${SERVER_URL}"
 ```bash
 agentroom invite accept '${INVITE_URL}' --server "${SERVER_URL}"
 # Prints the peer's ed25519_pk on success
+# Optional: --wait <seconds>  (default 10) — time to wait for SESSION_ACK
+# Optional: --json            — output {"ok":true,"peer_pk":"..."}
 ```
 
 ### Send a message

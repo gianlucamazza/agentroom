@@ -15,7 +15,8 @@ export default defineConfig({
   },
   // Tell Vite to treat node:* builtins as external (not bundled)
   ssr: {
-    external: [/^node:/],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    external: [/^node:/] as unknown as string[],
     noExternal: [],
   },
   test: {

@@ -265,8 +265,12 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
     pingIntervals.delete(pingInterval);
     clearInterval(pingInterval);
     const pk = getPk(ws);
-    if (pk) agents.delete(pk);
-    set("ws_connections", agents.size);
+    // Bug 1 fix: only delete if this WS is still the registered one.
+    // handleHello may have replaced agents[pk] with a new WS before this close fires.
+    if (pk && agents.get(pk)?.ws === ws) {
+      agents.delete(pk);
+      set("ws_connections", agents.size);
+    }
   });
 
   ws.on("error", () => ws.close());

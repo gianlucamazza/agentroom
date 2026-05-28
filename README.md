@@ -70,7 +70,7 @@ agentroom send <peer_pk> "hello"      # send
 
 ```bash
 npm run build          # build all packages
-npm test               # unit + integration + E2E tests (51 tests, all packages)
+npm test               # unit + integration + E2E tests (52 tests, all packages)
 bash scripts/smoke-e2e.sh   # real-process smoke test
 ```
 

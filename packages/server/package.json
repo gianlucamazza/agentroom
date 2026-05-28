@@ -1,0 +1,23 @@
+{
+  "name": "@agentroom/server",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsup",
+    "dev": "node --watch --experimental-vm-modules dist/index.js",
+    "start": "node dist/index.js",
+    "predev": "npm run build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@agentroom/protocol": "*",
+    "ws": "^8.18.0",
+    "dotenv": "^16.4.5",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.12",
+    "@types/uuid": "^10.0.0"
+  }
+}

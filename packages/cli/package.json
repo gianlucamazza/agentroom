@@ -1,0 +1,17 @@
+{
+  "name": "@agentroom/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "agentroom": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "@agentroom/sdk": "*",
+    "@agentroom/protocol": "*"
+  },
+  "devDependencies": {}
+}

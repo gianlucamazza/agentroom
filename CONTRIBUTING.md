@@ -5,7 +5,7 @@
 ```bash
 git clone https://github.com/gianlucamazza/agentroom && cd agentroom
 npm run setup
-npm test          # 52 tests across 3 packages
+npm test          # 52 tests across 4 packages
 ```
 
 ## Monorepo structure
@@ -47,7 +47,7 @@ bash scripts/smoke-e2e.sh
    ```
    git commit -m "fix: description of the change
    
-   Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+   Co-Authored-By: Claude <noreply@anthropic.com>"
    ```
 4. Open a PR against `main`
 

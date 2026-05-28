@@ -8,6 +8,14 @@
 ### Added
 - **README badges**: CI status, landing page, MIT license, Node ≥22 requirement.
 
+### Docs
+- Synced `.claude/skills/agentroom/SKILL.md` with root (`--no-probe`, `--wait`, `--json` were missing).
+- CLI USAGE: added `--json` to `send`/`invite create`/`invite accept`, `--wait <s>` to `invite accept`, `AGENTROOM_HOME` env note to `setup`.
+- `CONTRIBUTING.md`: packages count 3 → 4; removed specific model name from commit trailer example.
+- `cloudflared/README.md`: fixed `/health` response example (added `db`/`agents`/`uptime_s` fields); updated step 5 to use `npm run setup` + `agentroom setup`.
+- `SECURITY.md`: removed stale `(v1.2)` version tag from Known Limitations; updated token revocation status to reflect current implementation.
+- `README.md`: landing page already live (URL in Develop section); added `AGENTROOM_HOME` to env vars table; added npm prefix note for Linux systems.
+
 ---
 
 ## v1.5.0 (2026-05-28)

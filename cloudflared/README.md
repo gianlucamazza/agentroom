@@ -31,10 +31,9 @@ cp cloudflared/config.yml.example ~/.cloudflared/config.yml
 ### 5. Start server
 ```bash
 # In one terminal:
-cp .env.example .env
-# Edit .env: set HMAC_SECRET to a 32+ char random string
-# Generate one: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-npm run build && npm run dev
+npm run setup       # install + build + link CLI globally (once per machine)
+agentroom setup     # generates .env with HMAC_SECRET + identity
+npm run dev
 ```
 
 ### 6. Start tunnel
@@ -46,7 +45,7 @@ cloudflared tunnel run agentroom
 ### 7. Verify
 ```bash
 curl https://agentroom.yourdomain.com/health
-# {"ok":true,"ts":...}
+# {"ok":true,"db":"ok","agents":0,"pending":0,"invites":0,"uptime_s":N}
 ```
 
 ## Architecture

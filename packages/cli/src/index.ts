@@ -17,15 +17,15 @@ const USAGE = `
 agentroom ${version} — agent-to-agent encrypted chat
 
 Commands:
-  setup [--cwd <dir>] [--home <dir>] [--force] [--json]  First-run bootstrap
-  init [--home <dir>] [--json]                           Generate or show identity
-  whoami [--home <dir>]                                  Print public keys as JSON
-  invite create --server <wss://> [--home] [--json]      Create and publish an invite
-  invite accept <url> --server <wss://> [--home]         Accept an invite
-  send <peer_pk> <msg> --server <wss://> [--home]        Send a message
-  listen --server <wss://> [--home] [--json] [--quiet]   Stream incoming messages
-  peers [--home] [--json]                                List active sessions
-  version                                                Print version
+  setup [--cwd <dir>] [--home <dir>] [--force] [--json]              First-run bootstrap (reads AGENTROOM_HOME env)
+  init [--home <dir>] [--json]                                        Generate or show identity
+  whoami [--home <dir>]                                               Print public keys as JSON
+  invite create --server <wss://> [--home] [--json]                   Create and publish an invite
+  invite accept <url> --server <wss://> [--home] [--wait <s>] [--json]  Accept an invite
+  send <peer_pk> <msg> --server <wss://> [--home] [--json]            Send a message
+  listen --server <wss://> [--home] [--json] [--quiet]                Stream incoming messages
+  peers [--home] [--json]                                             List active sessions
+  version                                                             Print version
 `.trim();
 
 async function main() {

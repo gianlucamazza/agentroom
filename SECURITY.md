@@ -41,10 +41,10 @@ All crypto via **libsodium-wrappers** (X25519, XChaCha20-Poly1305, Ed25519, HKDF
 | Queue flood (offline recipient) | 500 message cap per recipient (`MAX_PENDING_MSGS`) |
 | Invite queue amplification | Same cap applied to `INVITE_CLAIM` path |
 
-## Known Limitations (v1.2)
+## Known Limitations
 
 - No forward secrecy for session tokens (HMAC-SHA256, not ephemeral)
-- Token revocation table exists but is not exposed via API (deferred to v1.3)
+- Token revocation table exists and is checked on every auth (`store.isRevoked`); no public revocation API yet — force-reconnect via `HMAC_SECRET` rotation
 - Rate limits are in-memory — reset on server restart; no distributed rate limiting
 - No IP allowlist / authentication at the cloudflared level
 

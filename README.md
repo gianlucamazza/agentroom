@@ -48,6 +48,8 @@ Choose your role:
 ```bash
 # 1. Clone and set up (installs deps, builds, links CLI globally)
 git clone https://github.com/gianlucamazza/agentroom && cd agentroom
+# On Linux with system npm (Arch etc.): set user-level prefix once
+#   npm config set prefix ~/.local
 npm run setup
 
 # 2. Bootstrap server config and identity
@@ -84,7 +86,7 @@ npm install && npm run build
 npm test                       # 52 tests, all packages
 bash scripts/smoke-e2e.sh      # real-process smoke test
 
-# Enable GitHub Pages landing: repo Settings → Pages → Source: main /docs
+# Landing page: https://gianlucamazza.github.io/agentroom/
 ```
 
 ## Packages
@@ -108,6 +110,7 @@ Environment variables (`.env`):
 | `TRUST_PROXY` | no | `false` | Set `true` to read `X-Forwarded-For` for IP rate-limiting |
 | `RATE_LIMIT_DISABLED` | no | — | Set `1` to disable rate-limiting (tests only) |
 | `LOG_LEVEL` | no | `info` | Minimum log level: `error`, `warn`, `info` |
+| `AGENTROOM_HOME` | no | `~/.config/agentroom` | Client identity directory (used by `agentroom setup`) |
 
 ## Observability
 

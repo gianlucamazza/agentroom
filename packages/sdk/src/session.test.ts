@@ -5,6 +5,8 @@ import {
   initRatchetSession,
   encryptMessage,
   decryptMessage,
+  serializeSession,
+  deserializeSession,
   type RatchetState,
 } from "./session.js";
 
@@ -135,5 +137,65 @@ describe("Double Ratchet session", () => {
     // Now deliver msg0 (should be found in skipped keys)
     const text0 = await decryptMessage(bobS, enc0.ciphertext, enc0.nonce, seq0, enc0.ratchet_pk, bob.x25519_sk);
     expect(new TextDecoder().decode(text0)).toBe("first");
+  });
+});
+
+describe("Session serialization", () => {
+  it("serialize/deserialize roundtrip preserves all fields", async () => {
+    const { aliceS } = await makeSessionPair();
+
+    const json = serializeSession(aliceS);
+    const restored = deserializeSession(json);
+
+    expect(toBase64(restored.sendChainKey)).toBe(toBase64(aliceS.sendChainKey));
+    expect(toBase64(restored.recvChainKey)).toBe(toBase64(aliceS.recvChainKey));
+    expect(toBase64(restored.sendEphemeral.x25519_pk)).toBe(toBase64(aliceS.sendEphemeral.x25519_pk));
+    expect(toBase64(restored.sendEphemeral.x25519_sk)).toBe(toBase64(aliceS.sendEphemeral.x25519_sk));
+    expect(restored.recvEphemeralPk).toBeNull();
+    expect(restored.sendSeq).toBe(aliceS.sendSeq);
+    expect(restored.recvSeq).toBe(aliceS.recvSeq);
+    expect(restored.peerPk).toBe(aliceS.peerPk);
+    expect(restored.lastUsedAt).toBeGreaterThan(0);
+  });
+
+  it("serialize/deserialize with skippedMessageKeys", async () => {
+    const { bob, aliceS, bobS } = await makeSessionPair();
+
+    // Produce a skip: deliver msg1 first, which stores key for msg0
+    const enc0 = await encryptMessage(aliceS, new TextEncoder().encode("skip-me"));
+    const enc1 = await encryptMessage(aliceS, new TextEncoder().encode("deliver-first"));
+    const seq0 = aliceS.sendSeq - 2;
+    const seq1 = aliceS.sendSeq - 1;
+
+    await decryptMessage(bobS, enc1.ciphertext, enc1.nonce, seq1, enc1.ratchet_pk, bob.x25519_sk);
+    expect(bobS.skippedMessageKeys.size).toBeGreaterThan(0);
+
+    const json = serializeSession(bobS);
+    const restored = deserializeSession(json);
+
+    expect(restored.skippedMessageKeys.size).toBe(bobS.skippedMessageKeys.size);
+
+    // Restored session can still decrypt the skipped message
+    const text0 = await decryptMessage(restored, enc0.ciphertext, enc0.nonce, seq0, enc0.ratchet_pk, bob.x25519_sk);
+    expect(new TextDecoder().decode(text0)).toBe("skip-me");
+    void enc0;
+  });
+
+  it("restored session continues encryption correctly", async () => {
+    const { bob, aliceS, bobS } = await makeSessionPair();
+
+    // Send one message
+    await sendRecv(aliceS, bobS, "msg0", bob.x25519_sk);
+
+    // Serialize and restore alice's session
+    const restored = deserializeSession(serializeSession(aliceS));
+    // Set the restored session as if it's a new process
+    restored.peerPk = aliceS.peerPk;
+
+    // Send another message from the restored state
+    const enc = await encryptMessage(restored, new TextEncoder().encode("msg1"));
+    const seq = restored.sendSeq - 1;
+    const plain = await decryptMessage(bobS, enc.ciphertext, enc.nonce, seq, enc.ratchet_pk, bob.x25519_sk);
+    expect(new TextDecoder().decode(plain)).toBe("msg1");
   });
 });

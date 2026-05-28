@@ -20,7 +20,21 @@ export async function cmdSend(args: string[]) {
 
   const client = new AgentroomClient();
   await client.connect({ serverUrl: server, home });
-  await client.sendMessage(peerPk, message);
-  console.log("✓ sent");
+
+  try {
+    await client.sendMessage(peerPk, message);
+    console.log("✓ sent");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("No session")) {
+      console.error(msg);
+      console.error("\nTip: sessions are persisted per identity directory.");
+      console.error("Make sure you have completed an invite handshake with this peer.");
+    } else {
+      console.error("[agentroom]", msg);
+    }
+    process.exitCode = 1;
+  }
+
   client.disconnect();
 }

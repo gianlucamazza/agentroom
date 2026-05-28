@@ -29,7 +29,23 @@ export async function cmdListen(args: string[]) {
     }
   });
 
-  await client.connect({ serverUrl: server, home });
+  client.onDisconnect((reason) => {
+    if (jsonMode) {
+      process.stdout.write(JSON.stringify({ type: "disconnect", reason, ts: Date.now() }) + "\n");
+    } else {
+      console.error(`[${new Date().toISOString()}] disconnected (${reason}) — reconnecting…`);
+    }
+  });
+
+  client.onReconnect(() => {
+    if (jsonMode) {
+      process.stdout.write(JSON.stringify({ type: "reconnect", ts: Date.now() }) + "\n");
+    } else {
+      console.error(`[${new Date().toISOString()}] reconnected`);
+    }
+  });
+
+  await client.connect({ serverUrl: server, home, autoReconnect: true });
 
   if (!jsonMode) console.log("Listening for messages. Ctrl+C to stop.");
 

@@ -1,4 +1,12 @@
-import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync } from "fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  chmodSync,
+  existsSync,
+  readdirSync,
+  unlinkSync,
+} from "fs";
 import path from "path";
 import {
   generateKeypair,
@@ -6,6 +14,7 @@ import {
   fromBase64,
   type AgentKeypair,
 } from "@agentroom/protocol";
+import { deserializeSession, serializeSession, setSession, type RatchetState } from "./session.js";
 
 export interface StoredIdentity {
   ed25519_pk: string;
@@ -14,9 +23,16 @@ export interface StoredIdentity {
   x25519_sk: string;
 }
 
+function configBase(home?: string): string {
+  return home ?? path.join(process.env["HOME"] ?? "~", ".config", "agentroom");
+}
+
 export function identityPath(home?: string): string {
-  const base = home ?? path.join(process.env["HOME"] ?? "~", ".config", "agentroom");
-  return path.join(base, "identity.json");
+  return path.join(configBase(home), "identity.json");
+}
+
+export function sessionsDir(home?: string): string {
+  return path.join(configBase(home), "sessions");
 }
 
 export async function loadOrCreateIdentity(home?: string): Promise<AgentKeypair & { path: string }> {
@@ -34,7 +50,6 @@ export async function loadOrCreateIdentity(home?: string): Promise<AgentKeypair 
     };
   }
 
-  // First run: generate and persist
   mkdirSync(dir, { recursive: true });
   const kp = await generateKeypair();
   const stored: StoredIdentity = {
@@ -44,7 +59,39 @@ export async function loadOrCreateIdentity(home?: string): Promise<AgentKeypair 
     x25519_sk: toBase64(kp.x25519_sk),
   };
   writeFileSync(idPath, JSON.stringify(stored, null, 2), { encoding: "utf8" });
-  // private key file — owner-read only
   chmodSync(idPath, 0o600);
   return { ...kp, path: idPath };
+}
+
+/** Save a single session to disk. Path: <sessionsDir>/<peerPk>.json */
+export function saveSession(peerPk: string, state: RatchetState, home?: string): void {
+  const dir = sessionsDir(home);
+  mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${peerPk}.json`);
+  writeFileSync(file, serializeSession(state), { encoding: "utf8" });
+  chmodSync(file, 0o600);
+}
+
+/** Load all sessions from disk into the in-memory sessions Map. */
+export function loadAllSessions(home?: string, maxAgeDays = 30): void {
+  const dir = sessionsDir(home);
+  if (!existsSync(dir)) return;
+
+  const cutoff = Date.now() - maxAgeDays * 86_400_000;
+
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith(".json")) continue;
+    const filePath = path.join(dir, file);
+    try {
+      const state = deserializeSession(readFileSync(filePath, "utf8"));
+      if (state.lastUsedAt < cutoff) {
+        // Prune stale session
+        unlinkSync(filePath);
+        continue;
+      }
+      setSession(state.peerPk, state);
+    } catch {
+      // Corrupt file — ignore
+    }
+  }
 }

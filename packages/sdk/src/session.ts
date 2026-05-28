@@ -60,6 +60,70 @@ export interface RatchetState {
 
   // Out-of-order buffer: "peerEphPk_b64:seq" → { key, addedAt }
   skippedMessageKeys: Map<string, { key: Bytes; addedAt: number }>;
+
+  /** Unix ms of last encrypt/decrypt — used for pruning stale sessions */
+  lastUsedAt: number;
+}
+
+// ─────────────────────────────────────────────
+// Serialization / Deserialization
+// ─────────────────────────────────────────────
+
+interface SerializedRatchetState {
+  peerPk: string;
+  sendChainKey: string;
+  recvChainKey: string;
+  sendEphemeral: { ed25519_pk: string; ed25519_sk: string; x25519_pk: string; x25519_sk: string };
+  recvEphemeralPk: string | null;
+  sendSeq: number;
+  recvSeq: number;
+  skippedMessageKeys: Array<[string, { key: string; addedAt: number }]>;
+  lastUsedAt: number;
+}
+
+export function serializeSession(state: RatchetState): string {
+  const serialized: SerializedRatchetState = {
+    peerPk: state.peerPk,
+    sendChainKey: toBase64(state.sendChainKey),
+    recvChainKey: toBase64(state.recvChainKey),
+    sendEphemeral: {
+      ed25519_pk: toBase64(state.sendEphemeral.ed25519_pk),
+      ed25519_sk: toBase64(state.sendEphemeral.ed25519_sk),
+      x25519_pk: toBase64(state.sendEphemeral.x25519_pk),
+      x25519_sk: toBase64(state.sendEphemeral.x25519_sk),
+    },
+    recvEphemeralPk: state.recvEphemeralPk ? toBase64(state.recvEphemeralPk) : null,
+    sendSeq: state.sendSeq,
+    recvSeq: state.recvSeq,
+    skippedMessageKeys: [...state.skippedMessageKeys.entries()].map(
+      ([k, v]) => [k, { key: toBase64(v.key), addedAt: v.addedAt }],
+    ),
+    lastUsedAt: state.lastUsedAt,
+  };
+  return JSON.stringify(serialized, null, 2);
+}
+
+export function deserializeSession(json: string): RatchetState {
+  const s = JSON.parse(json) as SerializedRatchetState;
+  const skippedMap = new Map<string, { key: Bytes; addedAt: number }>(
+    s.skippedMessageKeys.map(([k, v]) => [k, { key: fromBase64(v.key), addedAt: v.addedAt }]),
+  );
+  return {
+    peerPk: s.peerPk,
+    sendChainKey: fromBase64(s.sendChainKey),
+    recvChainKey: fromBase64(s.recvChainKey),
+    sendEphemeral: {
+      ed25519_pk: fromBase64(s.sendEphemeral.ed25519_pk),
+      ed25519_sk: fromBase64(s.sendEphemeral.ed25519_sk),
+      x25519_pk: fromBase64(s.sendEphemeral.x25519_pk),
+      x25519_sk: fromBase64(s.sendEphemeral.x25519_sk),
+    },
+    recvEphemeralPk: s.recvEphemeralPk ? fromBase64(s.recvEphemeralPk) : null,
+    sendSeq: s.sendSeq,
+    recvSeq: s.recvSeq,
+    skippedMessageKeys: skippedMap,
+    lastUsedAt: s.lastUsedAt ?? Date.now(),
+  };
 }
 
 const MAX_SKIP = 100;
@@ -92,10 +156,11 @@ export async function initRatchetSession(
     sendChainKey: bootstrapKeys.sendKey,
     recvChainKey: bootstrapKeys.recvKey,
     sendEphemeral,
-    recvEphemeralPk: null, // not yet received any message from peer
+    recvEphemeralPk: null,
     sendSeq: 0,
     recvSeq: -1,
     skippedMessageKeys: new Map(),
+    lastUsedAt: Date.now(),
   };
   sessions.set(peerPk, session);
   return session;
@@ -113,6 +178,7 @@ export async function encryptMessage(
   const { chainKey: nextChainKey } = await ratchetStep(session.sendChainKey, msgKey);
   session.sendChainKey = nextChainKey;
   session.sendSeq++;
+  session.lastUsedAt = Date.now();
 
   return {
     ciphertext: toBase64(ciphertext),
@@ -190,6 +256,7 @@ export async function decryptMessage(
   const { chainKey: nextChainKey } = await ratchetStep(session.recvChainKey, msgKey);
   session.recvChainKey = nextChainKey;
   session.recvSeq = seq;
+  session.lastUsedAt = Date.now();
 
   return plaintext;
 }

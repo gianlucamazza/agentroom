@@ -175,4 +175,48 @@ describe("E2E: invite → connect → send → receive", () => {
     alice.disconnect();
     bob2.disconnect();
   });
+
+  it("session persistence: send works after creating new client with same home", async () => {
+    const aliceHome = makeTmpHome(`alice-persist-${randomUUID()}`);
+    const bobHome   = makeTmpHome(`bob-persist-${randomUUID()}`);
+
+    // Establish a session between alice and bob
+    const alice1 = new AgentroomClient();
+    const bob1   = new AgentroomClient();
+
+    await alice1.connect({ serverUrl, home: aliceHome });
+    await bob1.connect({ serverUrl, home: bobHome });
+
+    const aliceSeen1 = waitFor<string>((emit) => alice1.onPeerOnline(emit));
+    const bobSeen1   = waitFor<string>((emit) => bob1.onPeerOnline(emit));
+
+    const { url } = await alice1.createInvite();
+    const alicePk = await bob1.acceptInvite(url);
+    await Promise.all([aliceSeen1, bobSeen1]);
+
+    // Both disconnect (simulate process exit)
+    alice1.disconnect();
+    bob1.disconnect();
+    await new Promise((r) => setTimeout(r, 50));
+
+    // Restart: create new client instances with same home dirs
+    const alice2 = new AgentroomClient();
+    const bob2   = new AgentroomClient();
+
+    await alice2.connect({ serverUrl, home: aliceHome });
+    await bob2.connect({ serverUrl, home: bobHome });
+
+    // bob2 should have alice's session loaded from disk, and vice versa
+    const bobPk = bob1.publicKey(); // same pk (same identity)
+    expect(bob2.peers()).toContain(alicePk);
+    expect(alice2.peers()).toContain(bobPk);
+
+    // bob2 sends to alice2 using the restored session
+    const aliceGot = waitFor<string>((emit) => alice2.onMessage((_, t) => emit(t)));
+    await bob2.sendMessage(alicePk, "hello after restart");
+    expect(await aliceGot).toBe("hello after restart");
+
+    alice2.disconnect();
+    bob2.disconnect();
+  });
 });

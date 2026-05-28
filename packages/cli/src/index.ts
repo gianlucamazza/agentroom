@@ -5,6 +5,7 @@ import { cmdInviteCreate, cmdInviteAccept } from "./commands/invite.js";
 import { cmdSend } from "./commands/send.js";
 import { cmdListen } from "./commands/listen.js";
 import { cmdPeers } from "./commands/peers.js";
+import { cmdSetup } from "./commands/setup.js";
 import { EXIT_USAGE } from "./exitcodes.js";
 
 const require = createRequire(import.meta.url);
@@ -16,14 +17,15 @@ const USAGE = `
 agentroom ${version} — agent-to-agent encrypted chat
 
 Commands:
-  init [--home <dir>] [--json]                        Generate or show identity
-  whoami [--home <dir>]                               Print public keys as JSON
-  invite create --server <wss://> [--home] [--json]   Create and publish an invite
-  invite accept <url> --server <wss://> [--home]      Accept an invite
-  send <peer_pk> <msg> --server <wss://> [--home]     Send a message
-  listen --server <wss://> [--home] [--json] [--quiet] Stream incoming messages
-  peers [--home] [--json]                             List active sessions
-  version                                             Print version
+  setup [--cwd <dir>] [--home <dir>] [--force] [--json]  First-run bootstrap
+  init [--home <dir>] [--json]                           Generate or show identity
+  whoami [--home <dir>]                                  Print public keys as JSON
+  invite create --server <wss://> [--home] [--json]      Create and publish an invite
+  invite accept <url> --server <wss://> [--home]         Accept an invite
+  send <peer_pk> <msg> --server <wss://> [--home]        Send a message
+  listen --server <wss://> [--home] [--json] [--quiet]   Stream incoming messages
+  peers [--home] [--json]                                List active sessions
+  version                                                Print version
 `.trim();
 
 async function main() {
@@ -42,6 +44,7 @@ async function main() {
   }
 
   switch (cmd) {
+    case "setup":   return cmdSetup([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "init":    return cmdInit([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "whoami":  return cmdWhoami([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "send":    return cmdSend([sub, ...rest].filter((a): a is string => Boolean(a)));

@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.5.0 (2026-05-28)
+
+### Added
+- **Landing page** in `docs/` (GitHub Pages): HTML+CSS, no external deps, dark mode, copy buttons, mobile-friendly. Activate via repo Settings → Pages → Source: `main /docs`.
+- **`agentroom setup`** command: one-shot bootstrap — generates `.env` with `HMAC_SECRET`, creates `data/`, initialises identity (`~/.config/agentroom/`). Flags: `--json`, `--force`, `--cwd`, `--home`.
+- **`npm run setup`** root script: `npm install && npm run build && npm link -w @agentroom/cli` — onboarding one-shot for new contributors.
+- **`engines.node >=22`** in all five `package.json` files — enforced at `npm install`.
+- **`files: ["dist", "README.md"]`** in all four package manifests — ready for future `npm publish`.
+- **`prepare` script** in `@agentroom/cli` — `npm install` from a git-source clone now auto-builds.
+
+### Changed
+- **`bin/agentroom-setup.sh`** delegates to `agentroom setup --json` when the CLI is in PATH; falls back to bash implementation for pre-install skill bootstrap.
+- **README quickstart** split into three role-based flows: *Run a relay*, *Chat as a client*, *Develop*.
+
+Tests: 52/52
+
+---
+
 ## post-v1.4 (2026-05-28)
 
 ### Bug fixes

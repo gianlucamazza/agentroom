@@ -1,15 +1,19 @@
 {
   "name": "agentroom",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "private": true,
   "workspaces": [
     "packages/*"
   ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev -w @agentroom/server",
     "test": "npm run test --workspaces --if-present",
-    "lint": "tsc --noEmit --project tsconfig.base.json"
+    "lint": "tsc --noEmit --project tsconfig.base.json",
+    "setup": "npm install && npm run build && npm link -w @agentroom/cli"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

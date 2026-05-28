@@ -1,8 +1,12 @@
 {
   "name": "@agentroom/server",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "main": "./dist/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
     "dev": "node --watch --experimental-vm-modules dist/index.js",

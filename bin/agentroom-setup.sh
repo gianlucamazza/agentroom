@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
 # agentroom-setup.sh — idempotent first-run setup for agentroom
+# Delegates to `agentroom setup` if the CLI is available; falls back to
+# the full bash implementation for skill Claude Code pre-install scenarios.
 # Outputs JSON: { ready: true/false, pk, identity_path, server_url, error? }
 # Exit 0 = ready, Exit 1 = not ready (see error field)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# ── Delegate to CLI if already installed ─────────────────────────────────────
+if command -v agentroom >/dev/null 2>&1; then
+	exec agentroom setup --json "$@"
+fi
 IDENTITY_DIR="${AGENTROOM_HOME:-$HOME/.config/agentroom}"
 SERVER_URL_FILE="$IDENTITY_DIR/server_url"
 

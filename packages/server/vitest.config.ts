@@ -22,5 +22,9 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
+    // Set AGENTROOM_DB before module load so store.ts uses :memory: even in parallel workers
+    env: {
+      AGENTROOM_DB: ":memory:",
+    },
   },
 });

@@ -30,31 +30,56 @@ Alice ──wss/E2E──►  │  route only,        │  ◄──wss/E2E─�
 - **Invites**: single-use capability URLs with 24h expiry, signed by inviter's Ed25519 key
 - **Replay protection**: monotonic sequence counter per session direction
 
-## Quickstart (5 commands)
+## Quickstart
+
+Choose your role:
+
+- [Run a relay](#run-a-relay) — operator: self-host the server for other agents
+- [Chat as a client](#chat-as-a-client) — agent: send and receive E2E encrypted messages
+- [Develop](#develop) — contributor: build, test, extend
+
+### Run a relay
 
 ```bash
-# 1. Clone and build
+# 1. Clone and set up (installs deps, builds, links CLI globally)
 git clone <repo> agentroom && cd agentroom
-npm install && npm run build
+npm run setup
 
-# 2. Configure server
-cp .env.example .env
-# Edit .env: set HMAC_SECRET=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")
+# 2. Bootstrap server config and identity
+agentroom setup          # generates .env with HMAC_SECRET + creates identity
 
-# 3. Start relay server
-npm run dev                           # HTTP + WS on :8787
+# 3. Start relay
+npm run dev              # HTTP + WS on :8787
 
-# 4. Expose via cloudflared (see cloudflared/README.md)
-cloudflared tunnel run agentroom      # wss://agentroom.yourdomain.com/ws
+# 4. Expose via cloudflared (optional — see cloudflared/README.md)
+cloudflared tunnel run agentroom   # wss://agentroom.yourdomain.com/ws
+```
 
-# 5. Chat
-agentroom init                        # generate identity
+### Chat as a client
+
+```bash
+# Requires: relay running at wss://agentroom.yourdomain.com/ws
+git clone <repo> agentroom && cd agentroom
+npm run setup
+agentroom setup --no-probe
+
+# Create invite and share the URL with your peer
 agentroom invite create --server wss://agentroom.yourdomain.com/ws
-# share the agentroom://invite/... URL with the other agent
-# on the other machine:
+# on the peer's machine:
 agentroom invite accept '<url>' --server wss://agentroom.yourdomain.com/ws
-agentroom listen --json               # wait for messages
-agentroom send <peer_pk> "hello"      # send
+
+agentroom listen --json        # wait for messages
+agentroom send <peer_pk> "hello from my agent"
+```
+
+### Develop
+
+```bash
+npm install && npm run build
+npm test                       # 52 tests, all packages
+bash scripts/smoke-e2e.sh      # real-process smoke test
+
+# Enable GitHub Pages landing: repo Settings → Pages → Source: main /docs
 ```
 
 ## Packages
@@ -65,14 +90,6 @@ agentroom send <peer_pk> "hello"      # send
 | `@agentroom/server` | WebSocket relay + HTTP auth + SQLite store-and-forward |
 | `@agentroom/sdk` | `AgentroomClient` — connect, invite, send, receive |
 | `@agentroom/cli` | `agentroom` binary wrapping the SDK |
-
-## Development
-
-```bash
-npm run build          # build all packages
-npm test               # unit + integration + E2E tests (52 tests, all packages)
-bash scripts/smoke-e2e.sh   # real-process smoke test
-```
 
 Environment variables (`.env`):
 
@@ -129,7 +146,7 @@ See `cloudflared/README.md` for exposing the server via Cloudflare Tunnel.
 
 The `agentroom` skill is installed at `~/.claude/skills/agentroom/SKILL.md`.
 In any Claude Code session: ask "create an agentroom invite" or "listen for agentroom messages".
-The skill auto-bootstraps by running `bin/agentroom-setup.sh`.
+The skill auto-bootstraps by running `bin/agentroom-setup.sh` (or `agentroom setup` if the CLI is already linked).
 
 ## References
 

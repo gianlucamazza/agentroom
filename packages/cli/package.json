@@ -1,13 +1,18 @@
 {
   "name": "@agentroom/cli",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "type": "module",
   "bin": {
     "agentroom": "./dist/index.js"
   },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch"
+    "dev": "tsup --watch",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@agentroom/sdk": "*",

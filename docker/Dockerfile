@@ -7,7 +7,7 @@ COPY packages/server/package.json    ./packages/server/
 COPY packages/sdk/package.json       ./packages/sdk/
 COPY packages/cli/package.json       ./packages/cli/
 
-RUN npm ci --silent
+RUN npm ci --ignore-scripts --silent
 
 COPY tsconfig.base.json ./
 COPY packages/ ./packages/

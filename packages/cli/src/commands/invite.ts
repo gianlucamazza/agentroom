@@ -42,7 +42,8 @@ export async function cmdInviteAccept(args: string[]) {
 
   const server = requireArg(args, "--server", "wss://host/ws");
   const home = getArg(args, "--home");
-  const waitSec = parseInt(getArg(args, "--wait") ?? "10", 10);
+  let waitSec = parseInt(getArg(args, "--wait") ?? "10", 10);
+  if (!Number.isFinite(waitSec) || waitSec <= 0) waitSec = 10;
 
   const client = new AgentroomClient();
   await client.connect({ serverUrl: server, home });

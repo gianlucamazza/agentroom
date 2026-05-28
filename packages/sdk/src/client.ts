@@ -14,14 +14,12 @@ import {
 } from "@agentroom/protocol";
 import { loadOrCreateIdentity, loadAllSessions, saveSession } from "./identity.js";
 import {
+  SessionStore,
   deriveSessionKeys,
-  initRatchetSession,
   encryptMessage,
   decryptMessage,
   signFrame,
   verifyFrameSig,
-  getSession,
-  listSessions,
   pruneSkippedInPlace,
 } from "./session.js";
 
@@ -66,6 +64,10 @@ export class AgentroomClient {
   private destroyed = false;
   private currentReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
+  // C4: per-instance session store — no cross-client contamination
+  private store = new SessionStore();
+  // A4: AbortController to cancel in-flight fetch on disconnect
+  private connectAbort: AbortController | null = null;
 
   onMessage(fn: MessageHandler) { this.onMessageHandlers.push(fn); }
   onPeerOnline(fn: PeerOnlineHandler) { this.onPeerOnlineHandlers.push(fn); }
@@ -83,8 +85,10 @@ export class AgentroomClient {
     this.identity = await loadOrCreateIdentity(opts.home);
     this.pk = toBase64(this.identity.ed25519_pk);
 
-    // Load persisted sessions from disk
-    loadAllSessions(opts.home);
+    // Load persisted sessions into this instance's store (C4: per-instance)
+    for (const state of loadAllSessions(opts.home)) {
+      this.store.set(state.peerPk, state);
+    }
 
     // Prune skipped keys for all loaded sessions
     this._pruneAllSkippedKeys();
@@ -112,10 +116,19 @@ export class AgentroomClient {
       this.sessionToken = null;
     }
 
-    // Full HELLO handshake
+    // Full HELLO handshake — fetch challenge with AbortController (A4)
     const httpBase = this.serverUrl.replace(/^wss?:\/\//, "http://").replace(/\/ws$/, "");
-    const resp = await fetch(`${httpBase}/auth/challenge`);
-    if (!resp.ok) throw new Error(`challenge request failed: ${resp.status}`);
+    this.connectAbort = new AbortController();
+    let resp: Response;
+    try {
+      resp = await fetch(`${httpBase}/auth/challenge`, { signal: this.connectAbort.signal });
+    } finally {
+      this.connectAbort = null;
+    }
+    if (!resp.ok) {
+      const hint = resp.status === 429 ? " (rate limited — retry in ~60s)" : "";
+      throw new Error(`challenge request failed: ${resp.status}${hint}`);
+    }
     const { challenge } = await resp.json() as { challenge: string };
     await this._openWs(this.serverUrl, true, challenge);
   }
@@ -208,7 +221,12 @@ export class AgentroomClient {
     catch { return; }
     const result = parseFrame(parsed);
     if (!result.ok) return;
-    await this._handleFrame(result.data);
+    // A2: wrap in try/catch to prevent unhandled rejection crashing the process
+    try {
+      await this._handleFrame(result.data);
+    } catch (err) {
+      console.warn("[sdk] error handling frame:", err instanceof Error ? err.message : err);
+    }
   }
 
   private async _scheduleReconnect(): Promise<void> {
@@ -269,7 +287,7 @@ export class AgentroomClient {
     if (routed.type === "SESSION_ACK")  { await this._handleSessionAck(routed); return; }
 
     // MSG
-    const session = getSession(routed.from);
+    const session = this.store.get(routed.from);
     if (!session) { console.warn("[sdk] no session for", routed.from); return; }
     const plainBytes = await decryptMessage(
       session,
@@ -288,6 +306,13 @@ export class AgentroomClient {
   private async _handleSessionInit(routed: RoutedFrame) {
     if (!this.identity) return;
 
+    // C2 security: never overwrite an existing session with a new SESSION_INIT.
+    // A malicious authenticated peer could send spurious SESSION_INIT to destroy sessions.
+    if (this.store.has(routed.from)) {
+      console.warn("[sdk] ignoring duplicate SESSION_INIT from", routed.from.slice(0, 8));
+      return;
+    }
+
     const initPayload = JSON.parse(
       new TextDecoder().decode(fromBase64(routed.ciphertext)),
     ) as { x25519_pk: string; nonce: string };
@@ -299,7 +324,7 @@ export class AgentroomClient {
       "inviter",
     );
 
-    const session = await initRatchetSession(routed.from, bootstrapKeys);
+    const session = await this.store.init(routed.from, bootstrapKeys);
     saveSession(session.peerPk, session, this.home);
 
     const ackPlain = new TextEncoder().encode(JSON.stringify({ ack: initPayload.nonce }));
@@ -327,7 +352,7 @@ export class AgentroomClient {
   }
 
   private async _handleSessionAck(routed: RoutedFrame) {
-    const session = getSession(routed.from);
+    const session = this.store.get(routed.from);
     if (!session) { console.warn("[sdk] SESSION_ACK without prior session for", routed.from); return; }
     saveSession(session.peerPk, session, this.home);
     for (const h of this.onPeerOnlineHandlers) h(routed.from);
@@ -372,7 +397,7 @@ export class AgentroomClient {
       "invitee",
     );
 
-    const session = await initRatchetSession(blob.inviter_ed25519_pk, bootstrapKeys);
+    const session = await this.store.init(blob.inviter_ed25519_pk, bootstrapKeys);
     saveSession(session.peerPk, session, this.home);
 
     const initPayload = JSON.stringify({
@@ -405,7 +430,7 @@ export class AgentroomClient {
 
   async sendMessage(peerPk: string, text: string): Promise<void> {
     if (!this.identity) throw new Error("not connected");
-    const session = getSession(peerPk);
+    const session = this.store.get(peerPk);
     if (!session) {
       throw new Error(
         `No session with ${peerPk}.\nRun first: agentroom invite create --server <url>` +
@@ -442,12 +467,16 @@ export class AgentroomClient {
     });
   }
 
-  peers(): string[] { return listSessions(); }
+  peers(): string[] { return this.store.list(); }
   publicKey(): string { return this.pk; }
 
   disconnect() {
     this.destroyed = true;
     this.reconnectEnabled = false;
+
+    // A4: abort any in-flight challenge fetch
+    this.connectAbort?.abort();
+    this.connectAbort = null;
 
     // Cancel any pending reconnect timer
     if (this.currentReconnectTimer) {
@@ -468,8 +497,8 @@ export class AgentroomClient {
     }
 
     // Save all active sessions before closing
-    for (const peerPk of listSessions()) {
-      const session = getSession(peerPk);
+    for (const peerPk of this.store.list()) {
+      const session = this.store.get(peerPk);
       if (session) {
         try { saveSession(peerPk, session, this.home); } catch { /* best-effort */ }
       }
@@ -479,11 +508,10 @@ export class AgentroomClient {
   }
 
   private _pruneAllSkippedKeys() {
-    for (const peerPk of listSessions()) {
-      const session = getSession(peerPk);
+    for (const peerPk of this.store.list()) {
+      const session = this.store.get(peerPk);
       if (session) {
         pruneSkippedInPlace(session);
-        // Persist if session was modified (pruneSkippedInPlace mutates in-place)
         try { saveSession(peerPk, session, this.home); } catch { /* best-effort */ }
       }
     }

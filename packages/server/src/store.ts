@@ -94,7 +94,6 @@ const stmts = {
     `DELETE FROM agents WHERE last_seen IS NOT NULL AND last_seen < unixepoch() - ?`,
   ),
 
-  revokeToken: db.prepare(`INSERT OR IGNORE INTO revoked_tokens (jti, exp) VALUES (?, ?)`),
   isRevoked: db.prepare(`SELECT 1 FROM revoked_tokens WHERE jti=?`),
   pruneRevokedTokens: db.prepare(`DELETE FROM revoked_tokens WHERE exp < unixepoch()`),
 };
@@ -155,9 +154,6 @@ export const store = {
     stmts.pruneRevokedTokens.run();
   },
 
-  revokeToken(jti: string, expSec: number) {
-    stmts.revokeToken.run(jti, expSec);
-  },
   isRevoked(jti: string): boolean {
     return !!stmts.isRevoked.get(jti);
   },

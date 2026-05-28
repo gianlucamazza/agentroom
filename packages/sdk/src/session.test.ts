@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { generateKeypair, createInvite, toBase64, fromBase64, sodiumReady, messageKey, open } from "@agentroom/protocol";
 import {
+  SessionStore,
   deriveSessionKeys,
   initRatchetSession,
   encryptMessage,
@@ -197,5 +198,86 @@ describe("Session serialization", () => {
     const seq = restored.sendSeq - 1;
     const plain = await decryptMessage(bobS, enc.ciphertext, enc.nonce, seq, enc.ratchet_pk, bob.x25519_sk);
     expect(new TextDecoder().decode(plain)).toBe("msg1");
+  });
+});
+
+describe("C3: atomic state — session survives decrypt failure", () => {
+  it("session remains usable after decryptMessage throws on bad ciphertext", async () => {
+    const { bob, aliceS, bobS } = await makeSessionPair();
+
+    // Encrypt a legitimate message
+    const enc = await encryptMessage(aliceS, new TextEncoder().encode("real msg"));
+    const seq = aliceS.sendSeq - 1;
+
+    // Corrupt the ciphertext (flip one byte)
+    const ct = fromBase64(enc.ciphertext);
+    ct[0] ^= 0xff;
+    const badCt = toBase64(ct);
+
+    // Attempt to decrypt the corrupted message — must throw
+    await expect(
+      decryptMessage(bobS, badCt, enc.nonce, seq, enc.ratchet_pk, bob.x25519_sk),
+    ).rejects.toThrow();
+
+    // C3 fix: session state is rolled back — bob must still decrypt the original correctly
+    const savedRecvChain = toBase64(bobS.recvChainKey);
+    const plain = await decryptMessage(bobS, enc.ciphertext, enc.nonce, seq, enc.ratchet_pk, bob.x25519_sk);
+    expect(new TextDecoder().decode(plain)).toBe("real msg");
+
+    void savedRecvChain;
+  });
+
+  it("session chain advances normally after a replay attempt", async () => {
+    const { bob, aliceS, bobS } = await makeSessionPair();
+
+    const enc0 = await encryptMessage(aliceS, new TextEncoder().encode("msg0"));
+    const seq0 = aliceS.sendSeq - 1;
+
+    // Decrypt once (normal)
+    await decryptMessage(bobS, enc0.ciphertext, enc0.nonce, seq0, enc0.ratchet_pk, bob.x25519_sk);
+
+    // Replay same message — must throw "replay detected"
+    await expect(
+      decryptMessage(bobS, enc0.ciphertext, enc0.nonce, seq0),
+    ).rejects.toThrow("replay");
+
+    // Chain must still work for next message
+    const enc1 = await encryptMessage(aliceS, new TextEncoder().encode("msg1"));
+    const seq1 = aliceS.sendSeq - 1;
+    const plain = await decryptMessage(bobS, enc1.ciphertext, enc1.nonce, seq1, enc1.ratchet_pk, bob.x25519_sk);
+    expect(new TextDecoder().decode(plain)).toBe("msg1");
+  });
+});
+
+describe("C4: SessionStore per-instance isolation", () => {
+  it("two SessionStore instances do not share sessions", async () => {
+    const store1 = new SessionStore();
+    const store2 = new SessionStore();
+
+    const { aliceS } = await makeSessionPair();
+    store1.set("peer-pk", aliceS);
+
+    expect(store1.get("peer-pk")).toBe(aliceS);
+    expect(store2.get("peer-pk")).toBeUndefined();
+    expect(store1.list()).toContain("peer-pk");
+    expect(store2.list()).not.toContain("peer-pk");
+  });
+
+  it("init creates session only in own store", async () => {
+    const store1 = new SessionStore();
+    const store2 = new SessionStore();
+
+    const kp = await generateKeypair();
+    const { signed } = await createInvite(kp.ed25519_pk, kp.ed25519_sk, kp.x25519_pk, "wss://test");
+    const keys = await deriveSessionKeys(kp.x25519_sk, kp.x25519_pk, signed.blob.nonce, "inviter");
+
+    await store1.init("remote-pk", keys);
+
+    expect(store1.get("remote-pk")).toBeDefined();
+    expect(store2.get("remote-pk")).toBeUndefined();
+    // Module-level backward-compat (initRatchetSession) should also be separate
+    const moduleSession = await initRatchetSession("remote-pk-2", keys);
+    expect(store1.get("remote-pk-2")).toBeUndefined();
+    void moduleSession;
   });
 });

@@ -70,7 +70,7 @@ agentroom send <peer_pk> "hello"      # send
 
 ```bash
 npm run build          # build all packages
-npm test               # unit + integration + E2E tests (45 tests)
+npm test               # unit + integration + E2E tests (51 tests)
 bash scripts/smoke-e2e.sh   # real-process smoke test
 ```
 
@@ -121,6 +121,8 @@ curl http://localhost:8787/health    # {"ok":true,...}
 ```
 
 See `cloudflared/README.md` for exposing the server via Cloudflare Tunnel.
+
+> **Note**: copy `.env.example → .env` and set `HMAC_SECRET` before starting (required even in Docker).
 
 ## Claude Code skill
 

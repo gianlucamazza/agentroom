@@ -32,13 +32,16 @@ VOLUME /data
 ENV AGENTROOM_DB=/data/agentroom.db
 ENV PORT=8787
 
-# Run as non-root (node user ships with node:22-alpine)
-RUN chown -R node:node /app /data 2>/dev/null || true
-USER node
+# su-exec allows entrypoint to drop from root → node after fixing /data ownership
+RUN apk add --no-cache su-exec
+
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8787
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget -qO- http://localhost:8787/health || exit 1
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "packages/server/dist/index.js"]

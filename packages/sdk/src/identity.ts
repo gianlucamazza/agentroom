@@ -15,7 +15,7 @@ import {
   fromBase64,
   type AgentKeypair,
 } from "@agentroom/protocol";
-import { deserializeSession, serializeSession, setSession, type RatchetState } from "./session.js";
+import { deserializeSession, serializeSession, type RatchetState } from "./session.js";
 
 export interface StoredIdentity {
   ed25519_pk: string;
@@ -73,12 +73,17 @@ export function saveSession(peerPk: string, state: RatchetState, home?: string):
   chmodSync(file, 0o600);
 }
 
-/** Load all sessions from disk into the in-memory sessions Map. */
-export function loadAllSessions(home?: string, maxAgeDays = 30): void {
+/**
+ * Load all sessions from disk and return them as an array.
+ * Callers are responsible for inserting them into their own SessionStore.
+ * Stale sessions (older than maxAgeDays) are pruned from disk.
+ */
+export function loadAllSessions(home?: string, maxAgeDays = 30): RatchetState[] {
   const dir = sessionsDir(home);
-  if (!existsSync(dir)) return;
+  if (!existsSync(dir)) return [];
 
   const cutoff = Date.now() - maxAgeDays * 86_400_000;
+  const results: RatchetState[] = [];
 
   for (const file of readdirSync(dir)) {
     if (!file.endsWith(".json")) continue;
@@ -86,15 +91,15 @@ export function loadAllSessions(home?: string, maxAgeDays = 30): void {
     try {
       const state = deserializeSession(readFileSync(filePath, "utf8"));
       if (state.lastUsedAt < cutoff) {
-        // Prune stale session
         unlinkSync(filePath);
         continue;
       }
-      setSession(state.peerPk, state);
+      results.push(state);
     } catch (err) {
       const corrupt = `${filePath}.corrupt-${Date.now()}`;
       try { renameSync(filePath, corrupt); } catch { /* best-effort */ }
       console.warn(`[agentroom] corrupt session file renamed to ${path.basename(corrupt)}:`, err instanceof Error ? err.message : err);
     }
   }
+  return results;
 }

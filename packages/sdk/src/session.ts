@@ -129,41 +129,65 @@ export function deserializeSession(json: string): RatchetState {
 const MAX_SKIP = 100;
 const SKIP_KEY_TTL_MS = 5 * 60_000;
 
-const sessions = new Map<string, RatchetState>();
+// ─────────────────────────────────────────────
+// SessionStore — per-instance store (C4 fix)
+// Eliminates module-level singleton that caused cross-client contamination.
+// ─────────────────────────────────────────────
+
+export class SessionStore {
+  private map = new Map<string, RatchetState>();
+
+  get(peerPk: string): RatchetState | undefined {
+    return this.map.get(peerPk);
+  }
+  set(peerPk: string, state: RatchetState): void {
+    this.map.set(peerPk, state);
+  }
+  has(peerPk: string): boolean {
+    return this.map.has(peerPk);
+  }
+  list(): string[] {
+    return [...this.map.keys()];
+  }
+
+  async init(peerPk: string, bootstrapKeys: SessionKeys): Promise<RatchetState> {
+    const sendEphemeral = await generateKeypair();
+    const session: RatchetState = {
+      peerPk,
+      sendChainKey: bootstrapKeys.sendKey,
+      recvChainKey: bootstrapKeys.recvKey,
+      sendEphemeral,
+      recvEphemeralPk: null,
+      sendSeq: 0,
+      recvSeq: -1,
+      skippedMessageKeys: new Map(),
+      lastUsedAt: Date.now(),
+    };
+    this.map.set(peerPk, session);
+    return session;
+  }
+}
+
+// ── Module-level backward-compat shim (used by session.test.ts and identity.ts) ──
+const defaultStore = new SessionStore();
 
 export function getSession(peerPk: string): RatchetState | undefined {
-  return sessions.get(peerPk);
+  return defaultStore.get(peerPk);
 }
 
 export function setSession(peerPk: string, session: RatchetState): void {
-  sessions.set(peerPk, session);
+  defaultStore.set(peerPk, session);
 }
 
 export function listSessions(): string[] {
-  return [...sessions.keys()];
+  return defaultStore.list();
 }
 
-/**
- * Initialize a ratchet session from static DH bootstrap keys.
- */
 export async function initRatchetSession(
   peerPk: string,
   bootstrapKeys: SessionKeys,
 ): Promise<RatchetState> {
-  const sendEphemeral = await generateKeypair();
-  const session: RatchetState = {
-    peerPk,
-    sendChainKey: bootstrapKeys.sendKey,
-    recvChainKey: bootstrapKeys.recvKey,
-    sendEphemeral,
-    recvEphemeralPk: null,
-    sendSeq: 0,
-    recvSeq: -1,
-    skippedMessageKeys: new Map(),
-    lastUsedAt: Date.now(),
-  };
-  sessions.set(peerPk, session);
-  return session;
+  return defaultStore.init(peerPk, bootstrapKeys);
 }
 
 /** Encrypt a message, advancing the send chain (symmetric ratchet). */
@@ -192,6 +216,9 @@ export async function encryptMessage(
  * - Checks skipped message keys for out-of-order delivery
  * - Performs DH ratchet when peer's ratchet_pk changes (forward secrecy extension)
  * - our_dh_sk: our current X25519 private key for DH ratchet (optional; needed for DH step)
+ *
+ * C3 fix: state mutations are rolled back if open() fails, preventing session corruption
+ * on malformed/replayed messages.
  */
 export async function decryptMessage(
   session: RatchetState,
@@ -214,51 +241,74 @@ export async function decryptMessage(
     throw new Error(`replay detected: seq ${seq} <= last seen ${session.recvSeq}`);
   }
 
-  // DH ratchet step: only when peer changes their ratchet_pk AND we've seen them before
-  if (ratchet_pk_b64 && our_dh_sk && session.recvEphemeralPk !== null) {
-    const prevPkB64 = toBase64(session.recvEphemeralPk);
-    if (ratchet_pk_b64 !== prevPkB64) {
-      // Store skipped keys from current recv chain before ratcheting
-      await storeSkippedKeys(session, prevPkB64, seq);
+  // ── Snapshot for rollback (C3 fix) ───────────────────────────────────────
+  // State is mutated below (DH ratchet + chain advance). If open() fails,
+  // we restore to pre-mutation state so the session remains functional.
+  const snapshot = {
+    recvChainKey:    session.recvChainKey,
+    recvEphemeralPk: session.recvEphemeralPk,
+    sendChainKey:    session.sendChainKey,
+    sendEphemeral:   session.sendEphemeral,
+    sendSeq:         session.sendSeq,
+    recvSeq:         session.recvSeq,
+  };
 
-      const newPeerPk = fromBase64(ratchet_pk_b64);
-      const dhOut = await dhSharedSecret(our_dh_sk, newPeerPk);
-      const { chainKey: newRecvChain } = await ratchetStep(session.recvChainKey, dhOut);
-      session.recvChainKey = newRecvChain;
-      session.recvEphemeralPk = newPeerPk;
-      // Reset recv counter for the new chain
-      session.recvSeq = -1;
+  try {
+    // DH ratchet step: only when peer changes their ratchet_pk AND we've seen them before
+    if (ratchet_pk_b64 && our_dh_sk && session.recvEphemeralPk !== null) {
+      const prevPkB64 = toBase64(session.recvEphemeralPk);
+      if (ratchet_pk_b64 !== prevPkB64) {
+        // Store skipped keys from current recv chain before ratcheting
+        await storeSkippedKeys(session, prevPkB64, seq);
 
-      // Advance our own send ephemeral for the next send
-      const newSendEph = await generateKeypair();
-      const dhOut2 = await dhSharedSecret(newSendEph.x25519_sk, newPeerPk);
-      const { chainKey: newSendChain } = await ratchetStep(session.sendChainKey, dhOut2);
-      session.sendChainKey = newSendChain;
-      session.sendEphemeral = newSendEph;
-      session.sendSeq = 0;
+        const newPeerPk = fromBase64(ratchet_pk_b64);
+        const dhOut = await dhSharedSecret(our_dh_sk, newPeerPk);
+        const { chainKey: newRecvChain } = await ratchetStep(session.recvChainKey, dhOut);
+        session.recvChainKey = newRecvChain;
+        session.recvEphemeralPk = newPeerPk;
+        // Reset recv counter for the new chain
+        session.recvSeq = -1;
+
+        // Advance our own send ephemeral for the next send
+        const newSendEph = await generateKeypair();
+        const dhOut2 = await dhSharedSecret(newSendEph.x25519_sk, newPeerPk);
+        const { chainKey: newSendChain } = await ratchetStep(session.sendChainKey, dhOut2);
+        session.sendChainKey = newSendChain;
+        session.sendEphemeral = newSendEph;
+        session.sendSeq = 0;
+      }
+    } else if (ratchet_pk_b64 && session.recvEphemeralPk === null) {
+      // First message from peer: record their ratchet_pk (no DH step yet)
+      session.recvEphemeralPk = fromBase64(ratchet_pk_b64);
     }
-  } else if (ratchet_pk_b64 && session.recvEphemeralPk === null) {
-    // First message from peer: record their ratchet_pk (no DH step yet)
-    session.recvEphemeralPk = fromBase64(ratchet_pk_b64);
+
+    // Store skipped keys if seq > recvSeq + 1 (out-of-order: advance chain to seq)
+    const peerPkForSkip = ratchet_pk_b64 ?? (session.recvEphemeralPk ? toBase64(session.recvEphemeralPk) : "");
+    if (seq > session.recvSeq + 1) {
+      await storeSkippedKeys(session, peerPkForSkip, seq);
+    }
+
+    // Decrypt with current recv chain — this is the only step that can fail
+    const msgKey = await messageKey(session.recvChainKey, seq);
+    const plaintext = await open(fromBase64(ciphertext), fromBase64(nonce), msgKey);
+
+    // open() succeeded: advance recv chain and commit
+    const { chainKey: nextChainKey } = await ratchetStep(session.recvChainKey, msgKey);
+    session.recvChainKey = nextChainKey;
+    session.recvSeq = seq;
+    session.lastUsedAt = Date.now();
+
+    return plaintext;
+  } catch (e) {
+    // Rollback chain state — skippedMessageKeys mutations are intentionally kept
+    session.recvChainKey    = snapshot.recvChainKey;
+    session.recvEphemeralPk = snapshot.recvEphemeralPk;
+    session.sendChainKey    = snapshot.sendChainKey;
+    session.sendEphemeral   = snapshot.sendEphemeral;
+    session.sendSeq         = snapshot.sendSeq;
+    session.recvSeq         = snapshot.recvSeq;
+    throw e;
   }
-
-  // Store skipped keys if seq > recvSeq + 1 (out-of-order: advance chain to seq)
-  const peerPkForSkip = ratchet_pk_b64 ?? (session.recvEphemeralPk ? toBase64(session.recvEphemeralPk) : "");
-  if (seq > session.recvSeq + 1) {
-    await storeSkippedKeys(session, peerPkForSkip, seq);
-  }
-
-  // Decrypt with current recv chain
-  const msgKey = await messageKey(session.recvChainKey, seq);
-  const plaintext = await open(fromBase64(ciphertext), fromBase64(nonce), msgKey);
-
-  // Advance recv chain
-  const { chainKey: nextChainKey } = await ratchetStep(session.recvChainKey, msgKey);
-  session.recvChainKey = nextChainKey;
-  session.recvSeq = seq;
-  session.lastUsedAt = Date.now();
-
-  return plaintext;
 }
 
 /**
@@ -273,6 +323,9 @@ async function storeSkippedKeys(
   const startSeq = session.recvSeq + 1;
   if (upToSeq <= startSeq) return;
   const count = Math.min(upToSeq - startSeq, MAX_SKIP);
+  if (count === MAX_SKIP && upToSeq - startSeq > MAX_SKIP) {
+    console.warn(`[agentroom] skipping ${upToSeq - startSeq - MAX_SKIP} out-of-order messages (exceed MAX_SKIP=${MAX_SKIP})`);
+  }
   const now = Date.now();
 
   // Prune stale entries

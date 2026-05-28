@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.3 (2026-05-28)
+
+### Security (critical fixes)
+- **C1**: `handleInviteClaim` now verifies the Ed25519 signature of the claimer against `frame.from`. Previously any authenticated peer could claim invites with arbitrary `from` identity.
+- **C2**: `_handleSessionInit` ignores duplicate SESSION_INIT for an existing session. Prevents a malicious peer from overwriting an active session via unsolicited SESSION_INIT.
+- **C3**: `decryptMessage` snapshots chain state before mutations; rolls back on `open()` failure. Sessions no longer get permanently corrupted by malformed/replayed messages.
+- **C4**: `SessionStore` class per `AgentroomClient` instance. Eliminated module-level singleton `sessions` Map that caused cross-client contamination in multi-client processes.
+
+### Bug fixes (high)
+- **A1**: `flushPending` no longer deletes messages unless the WS is confirmed OPEN (prevented message loss on mid-flush disconnect).
+- **A2**: `_handleRawMessage` wrapped in try/catch — `decryptMessage` exceptions no longer produce unhandled rejections that can crash Node 17+.
+- **A3**: Ghost WS connections prevented: old connection for a pk is closed (`code 1000`) before registering a new one in HELLO.
+- **A4**: `_doConnect` uses `AbortController` on `fetch /auth/challenge`; `disconnect()` aborts in-flight fetch, preventing orphan WS after explicit disconnect.
+
+### Fixes (medium)
+- `--wait 0` or negative values in `invite accept` default to 10s instead of failing immediately.
+- `revokeToken` dead code removed from `store.ts` (table and `isRevoked` remain for future use).
+- Docker: `entrypoint.sh` fixes `/data` ownership via `su-exec` before dropping to `node` user — solves UID mismatch with bind-mount volumes.
+- CI: `/health` smoke check now validates `ok == true` via `jq` (was accepting any HTTP 200).
+- `storeSkippedKeys` warns when `MAX_SKIP` is exceeded (M1).
+
+### Tests
+- 51 tests total (+6 new): C3 decrypt-failure rollback (2), C4 SessionStore isolation (2), C1 INVITE_CLAIM forged sig → INVALID_SIG, C2 duplicate SESSION_INIT ignored.
+- All 45 existing tests still pass.
+
+### Other
+- Version bumped from 0.1.0 to 1.3.0 across all packages.
+- README: Docker section notes `.env` prerequisite; test count updated.
+
+---
+
 ## v1.2 (2026-05-28)
 
 ### Security

@@ -71,6 +71,8 @@ function flushPending(ws: WebSocket, pk: string) {
   for (const { id, envelope } of pending) {
     try {
       const routed = JSON.parse(envelope) as RoutedFrame;
+      // A1: only delete after confirming ws is still open — never lose messages silently
+      if (ws.readyState !== WebSocket.OPEN) break;
       send(ws, { v: PROTOCOL_VERSION, type: "DELIVERY", msg_id: randomUUID(), ts: Date.now(), routed });
       store.deletePending(id);
     } catch {
@@ -109,6 +111,12 @@ async function handleHello(ws: WebSocket, frame: HelloFrame, remoteIp: string) {
 
   send(ws, { v: PROTOCOL_VERSION, type: "HELLO_ACK", msg_id: randomUUID(), ts: Date.now(), session_token });
 
+  // A3: close any previous WS for this pk before registering the new one (prevents ghost connections)
+  const existing = agents.get(frame.ed25519_pk);
+  if (existing && existing.ws !== ws && existing.ws.readyState === WebSocket.OPEN) {
+    existing.ws.close(1000, "replaced by new connection");
+  }
+
   setPk(ws, frame.ed25519_pk);
   agents.set(frame.ed25519_pk, { ws, pk: frame.ed25519_pk });
   set("ws_connections", agents.size);
@@ -127,6 +135,18 @@ async function handleInviteClaim(ws: WebSocket, frame: InviteClaimFrame) {
   const invite = store.getInvite(frame.invite_id);
   if (!invite) { send(ws, errorFrame("NOT_FOUND", "invite not found")); return; }
   if (invite.claimed_at) { send(ws, errorFrame("ALREADY_CLAIMED", "invite already used")); return; }
+
+  // C1: verify that frame.from actually signed this claim.
+  // Without this check, any authenticated user could claim any invite with an arbitrary "from" pk.
+  const sigPayload = new TextEncoder().encode(
+    JSON.stringify({ from: frame.from, to: invite.inviter_pk, seq: 0, nonce: frame.nonce }),
+  );
+  const claimSigValid = await verify(sigPayload, fromBase64(frame.sig), fromBase64(frame.from));
+  if (!claimSigValid) {
+    logEvent("warn", "invite_claim.invalid_sig", { from: frame.from.slice(0, 8), invite_id: frame.invite_id });
+    send(ws, errorFrame("INVALID_SIG", "INVITE_CLAIM signature verification failed"));
+    return;
+  }
 
   // Apply same cap as handleRouted to prevent queue amplification
   const maxMsgs = parseInt(process.env["MAX_PENDING_MSGS"] ?? "500", 10);

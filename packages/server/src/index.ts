@@ -9,8 +9,9 @@ import { store } from "./store.js";
 import { clearChallengeInterval } from "./auth.js";
 import { logEvent } from "./log.js";
 
-// Load .env (never silently overwrite env vars already set by the host)
-for (const envPath of [".env", "../../.env"].map((p) =>
+// Load .env — search progressively from dist/ toward monorepo root
+// dist/index.js → packages/server/ → packages/ → workspace_root/
+for (const envPath of [".env", "../../.env", "../../../.env"].map((p) =>
   new URL(p, import.meta.url).pathname,
 )) {
   if (existsSync(envPath)) {

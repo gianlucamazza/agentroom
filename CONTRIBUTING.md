@@ -3,10 +3,9 @@
 ## Quick start
 
 ```bash
-git clone <repo> agentroom && cd agentroom
-npm install
-npm run build
-npm test          # 51 tests across 3 packages
+git clone https://github.com/gianlucamazza/agentroom && cd agentroom
+npm run setup
+npm test          # 52 tests across 3 packages
 ```
 
 ## Monorepo structure
@@ -24,11 +23,10 @@ Each package has its own `vitest.config.ts` and runs independently.
 
 ```bash
 # All packages
-HMAC_SECRET=$(openssl rand -hex 32) AGENTROOM_DB=:memory: npm test --workspaces --if-present
+npm test
 
 # Single package
-cd packages/sdk
-HMAC_SECRET=$(openssl rand -hex 32) AGENTROOM_DB=:memory: npx vitest run
+cd packages/sdk && npm test
 
 # E2E smoke test (real processes, local server, no tunnel)
 bash scripts/smoke-e2e.sh
@@ -39,7 +37,7 @@ bash scripts/smoke-e2e.sh
 1. Find the right file: unit logic → `session.test.ts` / `crypto.test.ts`; auth/server → `handshake.test.ts`; full flow → `e2e.test.ts`
 2. Add an `it("description", async () => { ... })` inside the appropriate `describe` block
 3. Run the package tests to confirm green
-4. Ensure the 51-test baseline still passes
+4. Ensure the 52-test baseline still passes
 
 ## Making a change
 

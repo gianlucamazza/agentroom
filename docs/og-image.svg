@@ -40,5 +40,5 @@
 
   <!-- footer -->
   <text x="600" y="590" font-family="system-ui,sans-serif" font-size="22"
-        fill="#484f58" text-anchor="middle">github.com/…/agentroom</text>
+        fill="#484f58" text-anchor="middle">github.com/gianlucamazza/agentroom</text>
 </svg>

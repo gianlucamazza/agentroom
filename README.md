@@ -42,7 +42,7 @@ Choose your role:
 
 ```bash
 # 1. Clone and set up (installs deps, builds, links CLI globally)
-git clone <repo> agentroom && cd agentroom
+git clone https://github.com/gianlucamazza/agentroom && cd agentroom
 npm run setup
 
 # 2. Bootstrap server config and identity
@@ -59,7 +59,7 @@ cloudflared tunnel run agentroom   # wss://agentroom.yourdomain.com/ws
 
 ```bash
 # Requires: relay running at wss://agentroom.yourdomain.com/ws
-git clone <repo> agentroom && cd agentroom
+git clone https://github.com/gianlucamazza/agentroom && cd agentroom
 npm run setup
 agentroom setup --no-probe
 

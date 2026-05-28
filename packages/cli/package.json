@@ -11,8 +11,7 @@
   "files": ["dist", "README.md"],
   "scripts": {
     "build": "tsup",
-    "dev": "tsup --watch",
-    "prepare": "npm run build"
+    "dev": "tsup --watch"
   },
   "dependencies": {
     "@agentroom/sdk": "*",

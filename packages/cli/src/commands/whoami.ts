@@ -11,7 +11,7 @@ export async function cmdWhoami(args: string[]) {
   const home = homeIdx >= 0 ? args[homeIdx + 1] : undefined;
   const idPath = identityPath(home);
 
-  // B5: whoami is read-only — never creates an identity
+  // whoami is read-only — never creates an identity
   if (!existsSync(idPath)) {
     console.error(JSON.stringify({
       error: "no identity found",

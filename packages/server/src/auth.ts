@@ -117,7 +117,6 @@ export function verifySessionToken(
     const pk = parts.slice(1, -1).join(".");
     if (!pk || !tsStr) return { valid: false };
     if (Date.now() - parseInt(tsStr, 10) > maxAgeMs) return { valid: false };
-    if (store.isRevoked(jti)) return { valid: false };
     return { valid: true, pk, jti };
   } catch {
     return { valid: false };

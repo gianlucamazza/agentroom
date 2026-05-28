@@ -36,14 +36,8 @@ db.exec(`
     created_at  INTEGER NOT NULL DEFAULT (unixepoch())
   );
 
-  CREATE TABLE IF NOT EXISTS revoked_tokens (
-    jti  TEXT PRIMARY KEY,
-    exp  INTEGER NOT NULL
-  );
-
   CREATE INDEX IF NOT EXISTS idx_pending_to ON pending_messages(to_pk);
   CREATE INDEX IF NOT EXISTS idx_invites_expires ON invites(expires_at);
-  CREATE INDEX IF NOT EXISTS idx_revoked_exp ON revoked_tokens(exp);
 `);
 
 type AgentRow = { ed25519_pk: string; x25519_pk: string };
@@ -94,8 +88,6 @@ const stmts = {
     `DELETE FROM agents WHERE last_seen IS NOT NULL AND last_seen < unixepoch() - ?`,
   ),
 
-  isRevoked: db.prepare(`SELECT 1 FROM revoked_tokens WHERE jti=?`),
-  pruneRevokedTokens: db.prepare(`DELETE FROM revoked_tokens WHERE exp < unixepoch()`),
 };
 
 export const store = {
@@ -151,11 +143,6 @@ export const store = {
     stmts.pruneClaimedInvites.run(claimedCutoffSec);
     // agents inactive > 90 days
     stmts.pruneInactiveAgents.run(90 * 86400);
-    stmts.pruneRevokedTokens.run();
-  },
-
-  isRevoked(jti: string): boolean {
-    return !!stmts.isRevoked.get(jti);
   },
 
   closeDb() {

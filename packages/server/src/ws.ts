@@ -71,7 +71,7 @@ function flushPending(ws: WebSocket, pk: string) {
   for (const { id, envelope } of pending) {
     try {
       const routed = JSON.parse(envelope) as RoutedFrame;
-      // A1: only delete after confirming ws is still open — never lose messages silently
+      // only delete after confirming ws is still open — never lose messages silently
       if (ws.readyState !== WebSocket.OPEN) break;
       send(ws, { v: PROTOCOL_VERSION, type: "DELIVERY", msg_id: randomUUID(), ts: Date.now(), routed });
       store.deletePending(id);
@@ -111,7 +111,7 @@ async function handleHello(ws: WebSocket, frame: HelloFrame, remoteIp: string) {
 
   send(ws, { v: PROTOCOL_VERSION, type: "HELLO_ACK", msg_id: randomUUID(), ts: Date.now(), session_token });
 
-  // A3: close any previous WS for this pk before registering the new one (prevents ghost connections)
+  // close any previous WS for this pk before registering the new one (prevents ghost connections)
   const existing = agents.get(frame.ed25519_pk);
   if (existing && existing.ws !== ws && existing.ws.readyState === WebSocket.OPEN) {
     existing.ws.close(1000, "replaced by new connection");
@@ -136,7 +136,7 @@ async function handleInviteClaim(ws: WebSocket, frame: InviteClaimFrame) {
   if (!invite) { send(ws, errorFrame("NOT_FOUND", "invite not found")); return; }
   if (invite.claimed_at) { send(ws, errorFrame("ALREADY_CLAIMED", "invite already used")); return; }
 
-  // C1: verify that frame.from actually signed this claim.
+  // verify that frame.from actually signed this claim.
   // Without this check, any authenticated user could claim any invite with an arbitrary "from" pk.
   const sigPayload = new TextEncoder().encode(
     JSON.stringify({ from: frame.from, to: invite.inviter_pk, seq: 0, nonce: frame.nonce }),
@@ -265,8 +265,8 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
     pingIntervals.delete(pingInterval);
     clearInterval(pingInterval);
     const pk = getPk(ws);
-    // Bug 1 fix: only delete if this WS is still the registered one.
-    // handleHello may have replaced agents[pk] with a new WS before this close fires.
+    // only delete if this WS is still the registered one
+    // (handleHello may have replaced agents[pk] with a new WS before this close fires)
     if (pk && agents.get(pk)?.ws === ws) {
       agents.delete(pk);
       set("ws_connections", agents.size);

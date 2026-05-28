@@ -220,7 +220,7 @@ describe("C3: atomic state — session survives decrypt failure", () => {
       decryptMessage(bobS, badCt, enc.nonce, seq, enc.ratchet_pk, bob.x25519_sk),
     ).rejects.toThrow();
 
-    // C3 fix: session state is rolled back — bob must still decrypt the original correctly
+    // session state is rolled back — bob must still decrypt the original correctly
     const savedRecvChain = toBase64(bobS.recvChainKey);
     const plain = await decryptMessage(bobS, enc.ciphertext, enc.nonce, seq, enc.ratchet_pk, bob.x25519_sk);
     expect(new TextDecoder().decode(plain)).toBe("real msg");

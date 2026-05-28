@@ -44,7 +44,7 @@ All crypto via **libsodium-wrappers** (X25519, XChaCha20-Poly1305, Ed25519, HKDF
 ## Known Limitations
 
 - No forward secrecy for session tokens (HMAC-SHA256, not ephemeral)
-- Token revocation table exists and is checked on every auth (`store.isRevoked`); no public revocation API yet — force-reconnect via `HMAC_SECRET` rotation
+- Session tokens are stateless (HMAC-signed); revocation is achieved by rotating `HMAC_SECRET`, which invalidates all active tokens immediately
 - Rate limits are in-memory — reset on server restart; no distributed rate limiting
 - No IP allowlist / authentication at the cloudflared level
 

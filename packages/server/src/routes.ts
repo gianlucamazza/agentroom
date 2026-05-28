@@ -38,7 +38,6 @@ export function handleRequest(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (req.method === "GET" && url.pathname === "/health") {
-    // Bug 2 fix: capture agents count once inside the try to avoid a second call outside
     let dbStatus = "ok";
     let agentsN = 0;
     try { agentsN = store.countAgents(); } catch { dbStatus = "error"; }

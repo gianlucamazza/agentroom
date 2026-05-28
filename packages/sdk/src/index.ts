@@ -2,18 +2,10 @@ export { AgentroomClient } from "./client.js";
 export { loadOrCreateIdentity, identityPath, sessionsDir, loadAllSessions, saveSession } from "./identity.js";
 export {
   SessionStore,
-  getSession,
-  setSession,
-  listSessions,
   deriveSessionKeys,
   initRatchetSession,
   encryptMessage,
   decryptMessage,
-  signFrame,
-  verifyFrameSig,
-  serializeSession,
-  deserializeSession,
-  pruneSkippedInPlace,
   type RatchetState,
   type SessionKeys,
 } from "./session.js";

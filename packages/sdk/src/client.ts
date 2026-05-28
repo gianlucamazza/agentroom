@@ -64,9 +64,9 @@ export class AgentroomClient {
   private destroyed = false;
   private currentReconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private pruneTimer: ReturnType<typeof setInterval> | null = null;
-  // C4: per-instance session store — no cross-client contamination
+  // per-instance session store — no cross-client contamination
   private store = new SessionStore();
-  // A4: AbortController to cancel in-flight fetch on disconnect
+  // AbortController to cancel in-flight fetch on disconnect
   private connectAbort: AbortController | null = null;
 
   onMessage(fn: MessageHandler) { this.onMessageHandlers.push(fn); }
@@ -221,7 +221,7 @@ export class AgentroomClient {
     catch { return; }
     const result = parseFrame(parsed);
     if (!result.ok) return;
-    // A2: wrap in try/catch to prevent unhandled rejection crashing the process
+    // wrap in try/catch to prevent unhandled rejection crashing the process
     try {
       await this._handleFrame(result.data);
     } catch (err) {
@@ -306,8 +306,8 @@ export class AgentroomClient {
   private async _handleSessionInit(routed: RoutedFrame) {
     if (!this.identity) return;
 
-    // C2 security: never overwrite an existing session with a new SESSION_INIT.
-    // A malicious authenticated peer could send spurious SESSION_INIT to destroy sessions.
+    // never overwrite an existing session with a new SESSION_INIT:
+    // a malicious authenticated peer could send spurious SESSION_INIT to destroy sessions.
     if (this.store.has(routed.from)) {
       console.warn("[sdk] ignoring duplicate SESSION_INIT from", routed.from.slice(0, 8));
       return;
@@ -474,7 +474,7 @@ export class AgentroomClient {
     this.destroyed = true;
     this.reconnectEnabled = false;
 
-    // A4: abort any in-flight challenge fetch
+    // abort any in-flight challenge fetch
     this.connectAbort?.abort();
     this.connectAbort = null;
 

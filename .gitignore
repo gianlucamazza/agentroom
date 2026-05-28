@@ -16,3 +16,5 @@ cloudflared/*.yml
 identity.json
 server_url
 build/
+# local per-machine Claude Code permissions (not project config)
+/.claude/settings.local.json

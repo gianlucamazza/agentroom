@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.5.3 (2026-05-29)
+
+### Removed
+- **`revoked_tokens` table and infra** (`store.ts`, `auth.ts`): always-empty dead code — no writer ever existed. Session revocation via `HMAC_SECRET` rotation remains unchanged.
+- **`packages/server/types/node-sqlite.d.ts`**: ambient shim made redundant by `@types/node@^22` which ships official `node:sqlite` types.
+- **SDK barrel exports**: `getSession`, `setSession`, `listSessions`, `pruneSkippedInPlace`, `signFrame`, `verifyFrameSig`, `serializeSession`, `deserializeSession` — internal implementation details, not part of the public API.
+- **`.claude/settings.local.json`** from git tracking (personal machine-specific permission allowlist).
+- **Fix-reference comment prefixes** (14 occurrences of `// C1`, `// A2`, `// Bug 1 fix` etc.) — rationale is in CHANGELOG and git history.
+
+### Changed
+- `@types/node` bumped `^20.14.0` → `^22` (official `node:sqlite` type support).
+- `SECURITY.md`: clarified token revocation — stateless HMAC tokens, rotation invalidates all active tokens.
+- `.env.example`: clarified that `CF_TUNNEL_TOKEN` / `CF_CREDENTIALS_FILE` are read by the cloudflared binary, not the server.
+
+Tests: 52/52
+
+---
+
 ## v1.5.2 (2026-05-29)
 
 ### Fixed

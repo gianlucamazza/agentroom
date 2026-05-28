@@ -16,7 +16,7 @@ export async function cmdSend(args: string[]) {
     process.exit(EXIT_USAGE);
   }
 
-  // B12: catch accidental flag as message (e.g. send pk --server ...)
+  // catch accidental flag as message (e.g. send pk --server ...)
   if (message.startsWith("--")) {
     console.error(`Usage: agentroom send <peer_pk> "<message>" --server <url>`);
     console.error(`Hint: wrap the message in quotes if it contains spaces or special chars.`);

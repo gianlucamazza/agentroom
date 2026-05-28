@@ -38,6 +38,19 @@ wait_for() {
 	return 1
 }
 
+# Wait until at least N agents are connected (uses /metrics ws_connections — live WS count,
+# not /health agents which is the DB count and doesn't reset on server restart)
+wait_agents() {
+	local n="${1:-1}" max_s="${2:-5}"
+	for i in $(seq 1 "$((max_s * 5))"); do
+		sleep 0.2
+		local count
+		count=$(curl -sf "http://localhost:$TEST_PORT/metrics" 2>/dev/null | grep -o '"ws_connections":[0-9]*' | grep -o '[0-9]*$' || echo 0)
+		[[ "${count:-0}" -ge "$n" ]] && return 0
+	done
+	return 1
+}
+
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 log "checking prerequisites..."
 command -v node >/dev/null 2>&1 || fail "node not found"
@@ -104,8 +117,10 @@ INVITE_URL=$($AR invite create --home "$ALICE_HOME" --server "$SERVER_WS" | grep
 [[ -n "$INVITE_URL" ]] || fail "no invite URL captured"
 
 log "bob accepts invite..."
-$AR invite accept "$INVITE_URL" --home "$BOB_HOME" --server "$SERVER_WS" >/dev/null
-sleep 0.5 # wait for SESSION_ACK round-trip
+# Alice isn't listening yet → handshake may timeout (expected); session is saved and
+# SESSION_INIT is queued for Alice. Use || true so set -e doesn't abort on exit code 3.
+$AR invite accept "$INVITE_URL" --home "$BOB_HOME" --server "$SERVER_WS" >/dev/null || true
+sleep 0.5 # wait for SESSION_INIT to be queued for Alice
 
 # ════════════════════════════════════════════════════════════════════
 # SCENARIO 1: Basic send → receive
@@ -179,26 +194,25 @@ log "=== Scenario 4: server restart + client reconnect ==="
 ALICE_LOG4="$WORK_DIR/alice_listen4.jsonl"
 $AR listen --home "$ALICE_HOME" --server "$SERVER_WS" --json >"$ALICE_LOG4" 2>&1 &
 LISTEN_PID=$!
-sleep 0.3
+# Wait until Alice is registered with server before killing it
+wait_agents 1 8 || log "warning: alice may not have connected yet (proceeding)"
 
 # Kill server
 log "killing server..."
 kill "$SERVER_PID" 2>/dev/null
 SERVER_PID=""
-sleep 0.5
+sleep 0.3
 
 # Restart server
 log "restarting server..."
 start_server
-sleep 0.5
 
-# Bob sends after server restart (alice is reconnecting via autoReconnect)
-# Give alice time to reconnect (backoff 1s)
-sleep 2
+# Wait until Alice reconnects (SDK auto-reconnect: 1s, 2s, 4s backoff)
+wait_agents 1 20 || log "warning: alice may not have reconnected (proceeding)"
 
 $AR send "$ALICE_PK" "after server restart" --home "$BOB_HOME" --server "$SERVER_WS"
 
-wait_for "$ALICE_LOG4" "after server restart" 10 || {
+wait_for "$ALICE_LOG4" "after server restart" 15 || {
 	log "alice log: $(cat "$ALICE_LOG4" 2>/dev/null || echo '(empty)')"
 	fail "scenario 4: message not received after server restart"
 }

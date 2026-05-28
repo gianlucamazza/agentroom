@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.5.2 (2026-05-29)
+
+### Fixed
+- **`invite accept` output on timeout**: no longer prints "✓ Session established" or `{"ok":true}` when handshake timed out — exit code 3 (EXIT_NETWORK) unchanged but output is now consistent.
+- **`scripts/smoke-e2e.sh`**: invite accept step now uses `|| true`; script was silently aborting since v1.4 when Alice is offline during bob's accept (expected scenario for store-and-forward test).
+- **Docker build**: `Dockerfile` path corrected to `docker/Dockerfile`; `npm ci --ignore-scripts` prevents `@agentroom/cli prepare` hook from running without sources; health check retries up to 30s.
+- **Server bundle**: esbuild was stripping `node:` prefix from `node:sqlite` import → `onSuccess` hook restores it post-build.
+- **`.env` discovery**: server now searches `dist/.env`, `../../.env`, `../../../.env` (workspace root) — needed for monorepo deploys.
+- **CI**: build step runs before typecheck; clean runner had no `.d.ts` from workspace siblings.
+
+### Added
+- **`.claude-plugin/plugin.json`**: repo is a proper Claude Code plugin (ready for `/plugin install`).
+- **`skills/agentroom/SKILL.md`**: canonical skill location per Claude Code plugin spec.
+- **`scripts/sync-skill.sh`** + **`npm run sync-skill`**: single command to keep all SKILL.md copies in sync.
+- `SKILL.md` STEP 0: removed hardcoded `~/Workspace/agentroom` path → portable `agentroom setup --json`.
+
+### Docs
+- Full documentation audit: CLI USAGE flags (--json, --wait, AGENTROOM_HOME), CONTRIBUTING packages count, cloudflared /health format, SECURITY.md stale version tag, README AGENTROOM_HOME env var.
+
+Tests: 52/52
+
+---
+
 ## v1.5.1 (2026-05-28)
 
 ### Fixed
@@ -7,21 +30,6 @@
 
 ### Added
 - **README badges**: CI status, landing page, MIT license, Node ≥22 requirement.
-
-### Plugin packaging
-- Added `.claude-plugin/plugin.json` — repo is now a proper Claude Code plugin (ready for `/plugin install`).
-- Added `skills/agentroom/SKILL.md` — canonical skill location per Claude Code plugin spec.
-- Fixed `SKILL.md` STEP 0 hardcoded path (`~/Workspace/agentroom`) → portable `agentroom setup --json`.
-- Added `scripts/sync-skill.sh` + `npm run sync-skill` — single command to keep all SKILL.md copies in sync.
-- Synced stale `.claude/skills/agentroom/SKILL.md` (was missing 4 lines vs root).
-
-### Docs
-- Synced `.claude/skills/agentroom/SKILL.md` with root (`--no-probe`, `--wait`, `--json` were missing).
-- CLI USAGE: added `--json` to `send`/`invite create`/`invite accept`, `--wait <s>` to `invite accept`, `AGENTROOM_HOME` env note to `setup`.
-- `CONTRIBUTING.md`: packages count 3 → 4; removed specific model name from commit trailer example.
-- `cloudflared/README.md`: fixed `/health` response example (added `db`/`agents`/`uptime_s` fields); updated step 5 to use `npm run setup` + `agentroom setup`.
-- `SECURITY.md`: removed stale `(v1.2)` version tag from Known Limitations; updated token revocation status to reflect current implementation.
-- `README.md`: landing page already live (URL in Develop section); added `AGENTROOM_HOME` to env vars table; added npm prefix note for Linux systems.
 
 ---
 

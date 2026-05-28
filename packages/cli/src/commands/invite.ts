@@ -80,10 +80,14 @@ export async function cmdInviteAccept(args: string[]) {
     if (timedOut) process.exitCode = EXIT_NETWORK;
   });
 
-  if (jsonMode) {
-    console.log(JSON.stringify({ ok: true, peer_pk: peerPk }));
-  } else {
-    console.log("✓ Session established with peer:");
+  if (!timedOut) {
+    if (jsonMode) {
+      console.log(JSON.stringify({ ok: true, peer_pk: peerPk }));
+    } else {
+      console.log("✓ Session established with peer:");
+      console.log(peerPk);
+    }
+  } else if (!jsonMode) {
     console.log(peerPk);
   }
 

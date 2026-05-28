@@ -154,7 +154,20 @@ See `cloudflared/README.md` for exposing the server via Cloudflare Tunnel.
 
 The `agentroom` skill is installed at `~/.claude/skills/agentroom/SKILL.md`.
 In any Claude Code session: ask "create an agentroom invite" or "listen for agentroom messages".
-The skill auto-bootstraps by running `bin/agentroom-setup.sh` (or `agentroom setup` if the CLI is already linked).
+The skill calls `agentroom setup --json` to bootstrap identity and configuration.
+
+**Install / update the skill:**
+
+```bash
+npm run sync-skill   # copies SKILL.md to all known locations
+```
+
+**As a Claude Code plugin** (`.claude-plugin/plugin.json` included):
+
+```bash
+# Coming soon via /plugin install — plugin.json is ready
+# For now, use npm run sync-skill after cloning
+```
 
 ## References
 

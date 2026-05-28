@@ -55,6 +55,21 @@ bash scripts/smoke-e2e.sh
 
 See the `HMAC_SECRET`/`PORT`/`LOG_LEVEL` table in `README.md`. Never commit `.env`.
 
+## Updating the skill
+
+`SKILL.md` at the repo root is the **canonical source**. After editing it, sync all copies:
+
+```bash
+npm run sync-skill
+```
+
+This updates:
+- `skills/agentroom/SKILL.md` (plugin canonical location, used when repo is installed as a Claude Code plugin)
+- `.claude/skills/agentroom/SKILL.md` (project-level skill, active when CWD is this repo)
+- `~/.claude/skills/agentroom/SKILL.md` (user-level skill, always active)
+
+To install the skill on a new machine for the first time, run `npm run sync-skill` after cloning.
+
 ## Security
 
 Report vulnerabilities privately — see `SECURITY.md`.

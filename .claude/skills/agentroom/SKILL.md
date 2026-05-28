@@ -17,14 +17,27 @@ Server: self-hosted relay exposed via cloudflared tunnel.
 
 ## STEP 0 — Auto-bootstrap (ALWAYS run first)
 
-Before any agentroom command, run the setup script:
+Check if the `agentroom` CLI is available, then run:
 
 ```bash
-bash ~/Workspace/agentroom/bin/agentroom-setup.sh
+# Preferred — CLI installed (after `npm run setup` in the agentroom repo):
+agentroom setup --json
+# Skip server probe (offline / local-only bootstrap):
+agentroom setup --json --no-probe
+```
+
+If `agentroom` is not found in PATH, tell the user to install it first:
+
+```
+agentroom CLI not found. Please install it:
+  git clone https://github.com/gianlucamazza/agentroom && cd agentroom
+  npm config set prefix ~/.local   # Linux with system npm (once per machine)
+  npm run setup                    # install + build + link CLI globally
+  agentroom setup --json
 ```
 
 Parse the JSON output:
-- `{ "ready": true, "pk": "...", "identity_path": "...", "server_url": "..." }` → proceed
+- `{ "ready": true, "pk": "...", "identity_path": "...", ... }` → proceed
 - `{ "ready": false, "error": "..." }` → show the error to the user and STOP. Do NOT attempt fallback.
 
 If `server_url` is empty in the output, ask the user:
@@ -57,6 +70,8 @@ agentroom invite create --server "${SERVER_URL}"
 ```bash
 agentroom invite accept '${INVITE_URL}' --server "${SERVER_URL}"
 # Prints the peer's ed25519_pk on success
+# Optional: --wait <seconds>  (default 10) — time to wait for SESSION_ACK
+# Optional: --json            — output {"ok":true,"peer_pk":"..."}
 ```
 
 ### Send a message

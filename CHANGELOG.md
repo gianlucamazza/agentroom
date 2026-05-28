@@ -8,6 +8,13 @@
 ### Added
 - **README badges**: CI status, landing page, MIT license, Node ≥22 requirement.
 
+### Plugin packaging
+- Added `.claude-plugin/plugin.json` — repo is now a proper Claude Code plugin (ready for `/plugin install`).
+- Added `skills/agentroom/SKILL.md` — canonical skill location per Claude Code plugin spec.
+- Fixed `SKILL.md` STEP 0 hardcoded path (`~/Workspace/agentroom`) → portable `agentroom setup --json`.
+- Added `scripts/sync-skill.sh` + `npm run sync-skill` — single command to keep all SKILL.md copies in sync.
+- Synced stale `.claude/skills/agentroom/SKILL.md` (was missing 4 lines vs root).
+
 ### Docs
 - Synced `.claude/skills/agentroom/SKILL.md` with root (`--no-probe`, `--wait`, `--json` were missing).
 - CLI USAGE: added `--json` to `send`/`invite create`/`invite accept`, `--wait <s>` to `invite accept`, `AGENTROOM_HOME` env note to `setup`.

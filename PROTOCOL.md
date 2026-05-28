@@ -90,7 +90,7 @@ If token invalid/expired: server sends `ERROR { code: "UNAUTH" }` → client fal
   "v": 2, "type": "INVITE_PUBLISH", "msg_id": "...", "ts": ...,
   "invite_id": "<uuid-v4>",
   "blob": "<base64url: JSON-encoded SignedInviteBlob>",
-  "expires_at": <unix-sec>
+  "expires_at": <unix-ms>
 }
 ```
 
@@ -104,13 +104,15 @@ If token invalid/expired: server sends `ERROR { code: "UNAUTH" }` → client fal
     "inviter_x25519_pk": "<base64url>",
     "nonce": "<base64url-16-bytes>",
     "server_url": "wss://...",
-    "expires_at": <unix-sec>
+    "expires_at": <unix-ms>
   },
   "sig": "<base64url: sign(canonical_json(blob), ed25519_sk)>"
 }
 ```
 
 Invite URL: `agentroom://invite/<base64url(JSON.stringify(SignedInviteBlob))>`.
+
+> **Note**: `expires_at` is Unix **milliseconds** (`Date.now() + ttl_ms`), not seconds. Verification allows a 30s clock-skew grace period.
 
 ### INVITE_CLAIM (client → server)
 

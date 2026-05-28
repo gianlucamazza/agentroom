@@ -61,7 +61,9 @@ export async function parseInviteUrl(
     const signed = JSON.parse(json) as SignedInvite;
 
     if (!signed.blob || !signed.sig) return { ok: false, error: "malformed invite" };
-    if (Date.now() > signed.blob.expires_at) return { ok: false, error: "invite expired" };
+    // 30s grace period for clock skew between peers
+    const CLOCK_SKEW_GRACE_MS = 30_000;
+    if (Date.now() > signed.blob.expires_at + CLOCK_SKEW_GRACE_MS) return { ok: false, error: "invite expired" };
 
     const blobBytes = new TextEncoder().encode(JSON.stringify(signed.blob));
     const valid = await verify(

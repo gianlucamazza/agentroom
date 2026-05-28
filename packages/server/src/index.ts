@@ -45,6 +45,7 @@ const wss = attachWss(httpServer);
 
 httpServer.listen(PORT, () => {
   logEvent("info", "server.start", { port: PORT });
+  logEvent("info", "server.config", { log_level: process.env["LOG_LEVEL"] ?? "info" });
 });
 
 async function gracefulShutdown(signal: string) {

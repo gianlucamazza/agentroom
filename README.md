@@ -70,7 +70,7 @@ agentroom send <peer_pk> "hello"      # send
 
 ```bash
 npm run build          # build all packages
-npm test               # unit + integration + E2E tests (51 tests)
+npm test               # unit + integration + E2E tests (51 tests, all packages)
 bash scripts/smoke-e2e.sh   # real-process smoke test
 ```
 
@@ -85,6 +85,7 @@ Environment variables (`.env`):
 | `PENDING_TTL_DAYS` | no | `7` | Days to retain queued messages |
 | `TRUST_PROXY` | no | `false` | Set `true` to read `X-Forwarded-For` for IP rate-limiting |
 | `RATE_LIMIT_DISABLED` | no | — | Set `1` to disable rate-limiting (tests only) |
+| `LOG_LEVEL` | no | `info` | Minimum log level: `error`, `warn`, `info` |
 
 ## Observability
 

@@ -34,12 +34,20 @@ describe("invite", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("rejects expired invite", async () => {
+  it("rejects expired invite (outside 30s clock-skew grace)", async () => {
     const kp = await generateKeypair();
-    // ttl of -1ms → already expired
-    const { url } = await createInvite(kp.ed25519_pk, kp.ed25519_sk, kp.x25519_pk, "wss://test.local/ws", -1);
+    // ttl of -31_000ms → expired 31s ago, outside the 30s grace period
+    const { url } = await createInvite(kp.ed25519_pk, kp.ed25519_sk, kp.x25519_pk, "wss://test.local/ws", -31_000);
     const result = await parseInviteUrl(url);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain("expired");
+  });
+
+  it("accepts invite within 30s clock-skew grace period", async () => {
+    const kp = await generateKeypair();
+    // ttl of -10_000ms → expired 10s ago, still within the 30s grace
+    const { url } = await createInvite(kp.ed25519_pk, kp.ed25519_sk, kp.x25519_pk, "wss://test.local/ws", -10_000);
+    const result = await parseInviteUrl(url);
+    expect(result.ok).toBe(true);
   });
 });

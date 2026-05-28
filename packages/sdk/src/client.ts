@@ -22,21 +22,29 @@ import {
   verifyFrameSig,
   getSession,
   listSessions,
+  pruneSkippedInPlace,
 } from "./session.js";
 
 type MessageHandler = (from: string, text: string) => void;
 type PeerOnlineHandler = (pk: string) => void;
 type DisconnectHandler = (reason: string) => void;
 type ReconnectHandler = () => void;
+type ReconnectFailedHandler = (reason: string) => void;
 
 export interface ConnectOptions {
   serverUrl: string;
   home?: string;
   /** Auto-reconnect on drop. Default: false. Enable for long-lived listeners. */
   autoReconnect?: boolean;
+  /** Reconnect behavior overrides */
+  reconnect?: {
+    maxAttempts?: number;   // default: Infinity
+    maxBackoffMs?: number;  // default: 60_000
+  };
 }
 
-const BACKOFF_STEPS_MS = [1000, 2000, 4000, 8000, 16000, 32000, 60000];
+const DEFAULT_BACKOFF = [1000, 2000, 4000, 8000, 16000, 32000, 60000];
+const PRUNE_INTERVAL_MS = 5 * 60_000;
 
 export class AgentroomClient {
   private ws: WebSocket | null = null;
@@ -47,31 +55,48 @@ export class AgentroomClient {
   private onPeerOnlineHandlers: PeerOnlineHandler[] = [];
   private onDisconnectHandlers: DisconnectHandler[] = [];
   private onReconnectHandlers: ReconnectHandler[] = [];
+  private onReconnectFailedHandlers: ReconnectFailedHandler[] = [];
   private serverUrl = "";
   private home: string | undefined = undefined;
   private sessionToken: string | null = null;
   private reconnectEnabled = false;
   private reconnectAttempt = 0;
+  private reconnectMaxAttempts = Infinity;
+  private reconnectMaxBackoffMs = 60_000;
   private destroyed = false;
+  private currentReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private pruneTimer: ReturnType<typeof setInterval> | null = null;
 
   onMessage(fn: MessageHandler) { this.onMessageHandlers.push(fn); }
   onPeerOnline(fn: PeerOnlineHandler) { this.onPeerOnlineHandlers.push(fn); }
   onDisconnect(fn: DisconnectHandler) { this.onDisconnectHandlers.push(fn); }
   onReconnect(fn: ReconnectHandler) { this.onReconnectHandlers.push(fn); }
+  onReconnectFailed(fn: ReconnectFailedHandler) { this.onReconnectFailedHandlers.push(fn); }
 
   async connect(opts: ConnectOptions): Promise<void> {
     await sodiumReady();
     this.serverUrl = opts.serverUrl;
     this.home = opts.home;
     this.reconnectEnabled = opts.autoReconnect ?? false;
+    this.reconnectMaxAttempts = opts.reconnect?.maxAttempts ?? Infinity;
+    this.reconnectMaxBackoffMs = opts.reconnect?.maxBackoffMs ?? 60_000;
     this.identity = await loadOrCreateIdentity(opts.home);
     this.pk = toBase64(this.identity.ed25519_pk);
 
     // Load persisted sessions from disk
     loadAllSessions(opts.home);
 
+    // Prune skipped keys for all loaded sessions
+    this._pruneAllSkippedKeys();
+
     await this._doConnect();
     this.reconnectAttempt = 0;
+
+    // Periodic prune of skipped keys
+    if (!this.pruneTimer) {
+      this.pruneTimer = setInterval(() => this._pruneAllSkippedKeys(), PRUNE_INTERVAL_MS);
+      this.pruneTimer.unref?.();
+    }
   }
 
   /** Inner connect — also used for reconnect. */
@@ -111,7 +136,7 @@ export class AgentroomClient {
         if (!withHello) return; // token auth: just wait for server-side flush
         const challengeBytes = new TextEncoder().encode(challenge!);
         const sig = await signFrame(challengeBytes, this.identity!.ed25519_sk);
-        this.send({
+        this._sendRaw({
           v: PROTOCOL_VERSION,
           type: "HELLO",
           msg_id: randomUUID(),
@@ -187,9 +212,22 @@ export class AgentroomClient {
   }
 
   private async _scheduleReconnect(): Promise<void> {
-    const delay = BACKOFF_STEPS_MS[Math.min(this.reconnectAttempt, BACKOFF_STEPS_MS.length - 1)] ?? 60000;
+    if (this.destroyed || !this.reconnectEnabled) return;
+    if (this.reconnectAttempt >= this.reconnectMaxAttempts) {
+      const reason = `max reconnect attempts (${this.reconnectMaxAttempts}) reached`;
+      for (const h of this.onReconnectFailedHandlers) h(reason);
+      return;
+    }
+
+    const backoffSteps = DEFAULT_BACKOFF.map((ms) => Math.min(ms, this.reconnectMaxBackoffMs));
+    const delay = backoffSteps[Math.min(this.reconnectAttempt, backoffSteps.length - 1)] ?? this.reconnectMaxBackoffMs;
     this.reconnectAttempt++;
-    await new Promise((r) => setTimeout(r, delay));
+
+    await new Promise<void>((resolve) => {
+      this.currentReconnectTimer = setTimeout(resolve, delay);
+    });
+    this.currentReconnectTimer = null;
+
     if (this.destroyed) return;
     try {
       await this._doConnect();
@@ -200,7 +238,7 @@ export class AgentroomClient {
     }
   }
 
-  private send(data: unknown) {
+  private _sendRaw(data: unknown) {
     this.ws?.send(JSON.stringify(data));
   }
 
@@ -215,7 +253,7 @@ export class AgentroomClient {
         break;
       }
       case "PING":
-        this.send({ ...frame, type: "PONG" });
+        this._sendRaw({ ...frame, type: "PONG" });
         break;
     }
   }
@@ -272,7 +310,7 @@ export class AgentroomClient {
     );
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
 
-    this.send({
+    this._sendRaw({
       v: PROTOCOL_VERSION,
       type: "SESSION_ACK",
       msg_id: randomUUID(),
@@ -306,7 +344,7 @@ export class AgentroomClient {
     );
 
     await this.waitAck((msg_id) => {
-      this.send({
+      this._sendRaw({
         v: PROTOCOL_VERSION,
         type: "INVITE_PUBLISH",
         msg_id,
@@ -349,7 +387,7 @@ export class AgentroomClient {
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
 
     await this.waitAck((msg_id) => {
-      this.send({
+      this._sendRaw({
         v: PROTOCOL_VERSION,
         type: "INVITE_CLAIM",
         msg_id,
@@ -388,7 +426,7 @@ export class AgentroomClient {
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
 
     await this.waitAck((msg_id) => {
-      this.send({
+      this._sendRaw({
         v: PROTOCOL_VERSION,
         type: "MSG",
         msg_id,
@@ -410,7 +448,45 @@ export class AgentroomClient {
   disconnect() {
     this.destroyed = true;
     this.reconnectEnabled = false;
+
+    // Cancel any pending reconnect timer
+    if (this.currentReconnectTimer) {
+      clearTimeout(this.currentReconnectTimer);
+      this.currentReconnectTimer = null;
+    }
+
+    // Cancel prune timer
+    if (this.pruneTimer) {
+      clearInterval(this.pruneTimer);
+      this.pruneTimer = null;
+    }
+
+    // Drain pending ACKs immediately
+    for (const [msg_id, cb] of this.pendingAcks) {
+      cb("error", "client disconnected");
+      this.pendingAcks.delete(msg_id);
+    }
+
+    // Save all active sessions before closing
+    for (const peerPk of listSessions()) {
+      const session = getSession(peerPk);
+      if (session) {
+        try { saveSession(peerPk, session, this.home); } catch { /* best-effort */ }
+      }
+    }
+
     this.ws?.close();
+  }
+
+  private _pruneAllSkippedKeys() {
+    for (const peerPk of listSessions()) {
+      const session = getSession(peerPk);
+      if (session) {
+        pruneSkippedInPlace(session);
+        // Persist if session was modified (pruneSkippedInPlace mutates in-place)
+        try { saveSession(peerPk, session, this.home); } catch { /* best-effort */ }
+      }
+    }
   }
 
   private waitAck(send: (msg_id: string) => void): Promise<void> {

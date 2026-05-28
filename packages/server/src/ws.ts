@@ -13,7 +13,9 @@ import {
   type RoutedFrame,
 } from "@agentroom/protocol";
 import { store } from "./store.js";
-import { consumeChallenge, issueSessionToken, verifySessionToken } from "./auth.js";
+import { consumeChallenge, issueSessionToken, verifySessionToken, consumeHelloFailRate } from "./auth.js";
+import { inc, set } from "./metrics.js";
+import { logEvent } from "./log.js";
 
 interface ConnectedAgent {
   ws: WebSocket;
@@ -21,6 +23,34 @@ interface ConnectedAgent {
 }
 
 const agents = new Map<string, ConnectedAgent>();
+
+// WeakMap replaces the unsafe (ws as unknown)["__pk"] pattern
+const wsPkMap = new WeakMap<WebSocket, string>();
+
+function getPk(ws: WebSocket): string | undefined {
+  return wsPkMap.get(ws);
+}
+
+function setPk(ws: WebSocket, pk: string) {
+  wsPkMap.set(ws, pk);
+}
+
+// ── timers for graceful shutdown ──────────────────────────────────────────
+const pingIntervals = new Set<ReturnType<typeof setInterval>>();
+let pruneTimer: ReturnType<typeof setInterval> | null = null;
+
+export function clearWssIntervals() {
+  for (const t of pingIntervals) clearInterval(t);
+  pingIntervals.clear();
+  if (pruneTimer) { clearInterval(pruneTimer); pruneTimer = null; }
+}
+
+export function getWss(): WebSocketServer | null {
+  return _wss;
+}
+let _wss: WebSocketServer | null = null;
+
+// ── helpers ───────────────────────────────────────────────────────────────
 
 function send(ws: WebSocket, data: unknown) {
   if (ws.readyState === WebSocket.OPEN) {
@@ -49,7 +79,9 @@ function flushPending(ws: WebSocket, pk: string) {
   }
 }
 
-async function handleHello(ws: WebSocket, frame: HelloFrame) {
+// ── frame handlers ────────────────────────────────────────────────────────
+
+async function handleHello(ws: WebSocket, frame: HelloFrame, remoteIp: string) {
   if (!consumeChallenge(frame.challenge)) {
     send(ws, errorFrame("INVALID_CHALLENGE", "challenge expired or unknown"));
     ws.close();
@@ -59,6 +91,14 @@ async function handleHello(ws: WebSocket, frame: HelloFrame) {
   const msgBytes = new TextEncoder().encode(frame.challenge);
   const valid = await verify(msgBytes, fromBase64(frame.sig), fromBase64(frame.ed25519_pk));
   if (!valid) {
+    inc("hello_failures");
+    logEvent("warn", "hello.fail", { ip: remoteIp, pk: frame.ed25519_pk.slice(0, 8) });
+    if (!consumeHelloFailRate(remoteIp)) {
+      inc("rate_limit_hits");
+      send(ws, errorFrame("RATE_LIMIT", "too many authentication failures"));
+      ws.close(1008, "RATE_LIMIT");
+      return;
+    }
     send(ws, errorFrame("INVALID_SIG", "signature verification failed"));
     ws.close();
     return;
@@ -71,6 +111,8 @@ async function handleHello(ws: WebSocket, frame: HelloFrame) {
 
   setPk(ws, frame.ed25519_pk);
   agents.set(frame.ed25519_pk, { ws, pk: frame.ed25519_pk });
+  set("ws_connections", agents.size);
+  logEvent("info", "hello.success", { pk: frame.ed25519_pk.slice(0, 8) });
   flushPending(ws, frame.ed25519_pk);
 }
 
@@ -85,6 +127,13 @@ async function handleInviteClaim(ws: WebSocket, frame: InviteClaimFrame) {
   const invite = store.getInvite(frame.invite_id);
   if (!invite) { send(ws, errorFrame("NOT_FOUND", "invite not found")); return; }
   if (invite.claimed_at) { send(ws, errorFrame("ALREADY_CLAIMED", "invite already used")); return; }
+
+  // Apply same cap as handleRouted to prevent queue amplification
+  const maxMsgs = parseInt(process.env["MAX_PENDING_MSGS"] ?? "500", 10);
+  if (!agents.has(invite.inviter_pk) && store.countPending(invite.inviter_pk) >= maxMsgs) {
+    send(ws, ackFrame(frame.msg_id, "error", "recipient queue full"));
+    return;
+  }
 
   const ok = store.claimInvite(frame.invite_id);
   if (!ok) { send(ws, errorFrame("ALREADY_CLAIMED", "invite already used")); return; }
@@ -124,6 +173,7 @@ function handleRouted(ws: WebSocket, frame: RoutedFrame) {
   if (recipient) {
     send(recipient.ws, { v: PROTOCOL_VERSION, type: "DELIVERY", msg_id: randomUUID(), ts: Date.now(), routed: frame });
     send(ws, ackFrame(frame.msg_id, "delivered"));
+    inc("messages_routed_total");
   } else {
     if (store.countPending(frame.to) >= maxMsgs) {
       send(ws, ackFrame(frame.msg_id, "error", "recipient queue full"));
@@ -131,18 +181,12 @@ function handleRouted(ws: WebSocket, frame: RoutedFrame) {
     }
     store.enqueuePending(randomUUID(), frame.to, JSON.stringify(frame));
     send(ws, ackFrame(frame.msg_id, "queued"));
+    inc("messages_routed_total");
   }
 }
 
-function getPk(ws: WebSocket): string | undefined {
-  return (ws as unknown as Record<string, unknown>)["__pk"] as string | undefined;
-}
-
-function setPk(ws: WebSocket, pk: string) {
-  (ws as unknown as Record<string, unknown>)["__pk"] = pk;
-}
-
 function handleConnection(ws: WebSocket, req: IncomingMessage) {
+  const remoteIp = req.socket?.remoteAddress ?? "unknown";
   const url = new URL(req.url ?? "/", "http://localhost");
   const token = url.searchParams.get("token");
 
@@ -152,6 +196,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
       setPk(ws, result.pk);
       agents.set(result.pk, { ws, pk: result.pk });
       store.touchAgent(result.pk);
+      set("ws_connections", agents.size);
       flushPending(ws, result.pk);
     }
   }
@@ -159,6 +204,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
   const pingInterval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) ws.ping();
   }, 30_000);
+  pingIntervals.add(pingInterval);
 
   ws.on("pong", () => { /* keepalive acknowledged */ });
   ws.on("ping", () => ws.pong());
@@ -175,7 +221,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
     if (frame.type === "PING") { send(ws, { ...frame, type: "PONG" }); return; }
     if (frame.type === "PONG") return;
 
-    if (frame.type === "HELLO") { await handleHello(ws, frame); return; }
+    if (frame.type === "HELLO") { await handleHello(ws, frame, remoteIp); return; }
 
     if (!getPk(ws)) {
       send(ws, errorFrame("UNAUTH", "authenticate first with HELLO"));
@@ -196,9 +242,11 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
   });
 
   ws.on("close", () => {
+    pingIntervals.delete(pingInterval);
     clearInterval(pingInterval);
     const pk = getPk(ws);
     if (pk) agents.delete(pk);
+    set("ws_connections", agents.size);
   });
 
   ws.on("error", () => ws.close());
@@ -207,6 +255,7 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
 /** Attach WS server to an existing HTTP server on path /ws */
 export function attachWss(httpServer: Server): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
+  _wss = wss;
 
   httpServer.on("upgrade", (req, socket, head) => {
     const { pathname } = new URL(req.url ?? "/", "http://localhost");
@@ -222,9 +271,10 @@ export function attachWss(httpServer: Server): WebSocketServer {
   wss.on("connection", handleConnection);
 
   // prune expired data every hour
-  setInterval(() => {
+  pruneTimer = setInterval(() => {
     store.prune(parseInt(process.env["PENDING_TTL_DAYS"] ?? "7", 10));
   }, 3_600_000);
+  pruneTimer.unref?.();
 
   return wss;
 }

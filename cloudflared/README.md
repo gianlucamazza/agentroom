@@ -49,7 +49,23 @@ curl https://agentroom.yourdomain.com/health
 # {"ok":true,"ts":...}
 ```
 
+## Architecture
+
+```
+cloudflared (public) ──► agentroom server :8787 (HTTP + WS)
+                                │
+                    attachWss(httpServer)
+                                │
+                    /auth/challenge  (HTTP GET)
+                    /health          (HTTP GET)
+                    /metrics         (HTTP GET)
+                    /ws              (WebSocket upgrade)
+```
+
+HTTP and WebSocket share **the same port (8787)** via `attachWss(httpServer)`. A single cloudflared ingress rule covers both — no second rule needed.
+
 ## Notes
 - cloudflared handles TLS termination and WebSocket upgrades automatically
-- The WS server runs on PORT+1 (default 8788). You need a second ingress rule if you want to separate HTTP and WS on the same domain — or just use the same port via an HTTP server that handles both (recommended for v1.1)
+- One ingress rule routes everything (HTTP and WS) to `localhost:8787`
 - Credentials JSON (`~/.cloudflared/<id>.json`) must never be committed to git
+- Health endpoint: `curl https://agentroom.yourdomain.com/health` → `{"ok":true,"db":"ok",...}`

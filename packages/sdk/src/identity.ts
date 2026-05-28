@@ -6,6 +6,7 @@ import {
   existsSync,
   readdirSync,
   unlinkSync,
+  renameSync,
 } from "fs";
 import path from "path";
 import {
@@ -90,8 +91,10 @@ export function loadAllSessions(home?: string, maxAgeDays = 30): void {
         continue;
       }
       setSession(state.peerPk, state);
-    } catch {
-      // Corrupt file — ignore
+    } catch (err) {
+      const corrupt = `${filePath}.corrupt-${Date.now()}`;
+      try { renameSync(filePath, corrupt); } catch { /* best-effort */ }
+      console.warn(`[agentroom] corrupt session file renamed to ${path.basename(corrupt)}:`, err instanceof Error ? err.message : err);
     }
   }
 }

@@ -73,6 +73,7 @@ async function handshakePair(suffix = "") {
 beforeAll(async () => {
   process.env["HMAC_SECRET"] = "a".repeat(32);
   process.env["AGENTROOM_DB"] = ":memory:";
+  process.env["RATE_LIMIT_DISABLED"] = "1"; // avoid rate-limit noise in unit tests
   process.removeAllListeners("warning");
 
   await sodiumReady();

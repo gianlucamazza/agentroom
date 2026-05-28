@@ -3,8 +3,11 @@ process.removeAllListeners("warning");
 
 import { createServer } from "http";
 import { readFileSync, existsSync } from "fs";
-import { attachWss } from "./ws.js";
+import { attachWss, clearWssIntervals, getWss } from "./ws.js";
 import { handleRequest } from "./routes.js";
+import { store } from "./store.js";
+import { clearChallengeInterval } from "./auth.js";
+import { logEvent } from "./log.js";
 
 // Load .env (never silently overwrite env vars already set by the host)
 for (const envPath of [".env", "../../.env"].map((p) =>
@@ -38,19 +41,43 @@ if (missing.length) {
 const PORT = parseInt(process.env["PORT"] ?? "8787", 10);
 
 const httpServer = createServer(handleRequest);
-attachWss(httpServer);
+const wss = attachWss(httpServer);
 
 httpServer.listen(PORT, () => {
-  console.log(`[agentroom] listening on :${PORT}  (HTTP + WS on /ws)`);
+  logEvent("info", "server.start", { port: PORT });
 });
 
-process.on("SIGINT", () => {
-  console.log("[agentroom] shutting down");
-  httpServer.close();
-  process.exit(0);
-});
+async function gracefulShutdown(signal: string) {
+  logEvent("info", "shutdown.start", { signal });
 
-process.on("SIGTERM", () => {
+  // Stop accepting new HTTP connections
   httpServer.close();
+
+  // Close all active WebSocket connections
+  const wssInst = getWss() ?? wss;
+  const closePromises = Array.from(wssInst.clients).map(
+    (ws) => new Promise<void>((resolve) => {
+      ws.on("close", resolve);
+      ws.close(1001, "server shutting down");
+    }),
+  );
+
+  // Wait for WS drain with 5s timeout
+  await Promise.race([
+    Promise.all(closePromises),
+    new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+  ]);
+
+  // Cancel all timers
+  clearWssIntervals();
+  clearChallengeInterval();
+
+  // Close the database
+  try { store.closeDb(); } catch { /* ignore */ }
+
+  logEvent("info", "shutdown.done", { signal });
   process.exit(0);
-});
+}
+
+process.on("SIGINT",  () => { void gracefulShutdown("SIGINT"); });
+process.on("SIGTERM", () => { void gracefulShutdown("SIGTERM"); });

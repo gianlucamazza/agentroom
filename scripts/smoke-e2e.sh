@@ -1,25 +1,41 @@
 #!/usr/bin/env bash
 # smoke-e2e.sh — end-to-end smoke test using real CLI processes
-# Usage: bash scripts/smoke-e2e.sh [--server-port PORT]
+# Scenarios:
+#   1. Basic invite → listen → send → receive
+#   2. Session persistence restart (send works after creating new process)
+#   3. Store-and-forward: message queued while recipient offline, delivered on reconnect
+#   4. Server restart + client reconnect
+# Usage: bash scripts/smoke-e2e.sh
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK_DIR="$(mktemp -d /tmp/agentroom-smoke.XXXXXX)"
-SERVER_PORT="${1:-0}" # 0 = let OS assign; we'll parse the actual port
 SERVER_PID=""
 LISTEN_PID=""
+LISTEN2_PID=""
 
 cleanup() {
 	[[ -n "$LISTEN_PID" ]] && kill "$LISTEN_PID" 2>/dev/null || true
+	[[ -n "$LISTEN2_PID" ]] && kill "$LISTEN2_PID" 2>/dev/null || true
 	[[ -n "$SERVER_PID" ]] && kill "$SERVER_PID" 2>/dev/null || true
 	rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
 
 log() { echo "[smoke] $*" >&2; }
+pass() { echo "[smoke] ✓ $*" >&2; }
 fail() {
 	echo "[smoke] FAIL: $*" >&2
 	exit 1
+}
+
+wait_for() {
+	local file="$1" pattern="$2" max_s="${3:-5}"
+	for i in $(seq 1 "$((max_s * 5))"); do
+		sleep 0.2
+		grep -q "$pattern" "$file" 2>/dev/null && return 0
+	done
+	return 1
 }
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
@@ -36,12 +52,12 @@ fi
 
 AGENTROOM_BIN="$REPO_ROOT/packages/cli/dist/index.js"
 [[ -f "$AGENTROOM_BIN" ]] || fail "CLI not found at $AGENTROOM_BIN"
+AR="node $AGENTROOM_BIN"
 
 # ── Generate test .env ────────────────────────────────────────────────────────
 log "generating test .env..."
 TEST_SECRET="$(openssl rand -hex 32)"
 TEST_PORT=8900
-# Find a free port
 for p in $(seq 8900 8950); do
 	if ! ss -tlnp 2>/dev/null | grep -q ":$p "; then
 		TEST_PORT=$p
@@ -51,26 +67,23 @@ done
 
 SERVER_LOG="$WORK_DIR/server.log"
 SERVER_DB="$WORK_DIR/agentroom.db"
+SERVER_CMD="node $REPO_ROOT/packages/server/dist/index.js"
+
+start_server() {
+	HMAC_SECRET="$TEST_SECRET" PORT="$TEST_PORT" AGENTROOM_DB="$SERVER_DB" \
+		$SERVER_CMD >>"$SERVER_LOG" 2>&1 &
+	SERVER_PID=$!
+	for i in $(seq 1 20); do
+		sleep 0.2
+		curl -sf "http://localhost:$TEST_PORT/health" >/dev/null 2>&1 && return 0
+		kill -0 "$SERVER_PID" 2>/dev/null || fail "server died. Log: $(tail -5 "$SERVER_LOG")"
+	done
+	fail "server did not start. Log: $(tail -5 "$SERVER_LOG")"
+}
 
 # ── Start server ──────────────────────────────────────────────────────────────
 log "starting server on :$TEST_PORT ..."
-HMAC_SECRET="$TEST_SECRET" PORT="$TEST_PORT" AGENTROOM_DB="$SERVER_DB" \
-	node "$REPO_ROOT/packages/server/dist/index.js" >"$SERVER_LOG" 2>&1 &
-SERVER_PID=$!
-
-# Wait for server to be ready
-for i in $(seq 1 20); do
-	sleep 0.2
-	if curl -sf "http://localhost:$TEST_PORT/health" >/dev/null 2>&1; then
-		break
-	fi
-	if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-		fail "server process died. Log: $(cat "$SERVER_LOG")"
-	fi
-	if [[ $i -eq 20 ]]; then
-		fail "server did not start in time. Log: $(cat "$SERVER_LOG")"
-	fi
-done
+start_server
 log "server ready"
 
 SERVER_WS="ws://localhost:$TEST_PORT/ws"
@@ -79,40 +92,121 @@ BOB_HOME="$WORK_DIR/bob"
 
 # ── Init identities ───────────────────────────────────────────────────────────
 log "initializing alice and bob identities..."
-node "$AGENTROOM_BIN" init --home "$ALICE_HOME" >/dev/null
-node "$AGENTROOM_BIN" init --home "$BOB_HOME" >/dev/null
+$AR init --home "$ALICE_HOME" >/dev/null
+$AR init --home "$BOB_HOME" >/dev/null
 
-ALICE_PK=$(node "$AGENTROOM_BIN" whoami --home "$ALICE_HOME" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));process.stdout.write(d.ed25519_pk)")
+ALICE_PK=$($AR whoami --home "$ALICE_HOME" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));process.stdout.write(d.ed25519_pk)")
+BOB_PK=$($AR whoami --home "$BOB_HOME" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));process.stdout.write(d.ed25519_pk)")
 
 # ── Invite flow ───────────────────────────────────────────────────────────────
 log "alice creates invite..."
-INVITE_URL=$(node "$AGENTROOM_BIN" invite create --home "$ALICE_HOME" --server "$SERVER_WS" | grep "^agentroom://")
+INVITE_URL=$($AR invite create --home "$ALICE_HOME" --server "$SERVER_WS" | grep "^agentroom://")
 [[ -n "$INVITE_URL" ]] || fail "no invite URL captured"
 
 log "bob accepts invite..."
-node "$AGENTROOM_BIN" invite accept "$INVITE_URL" --home "$BOB_HOME" --server "$SERVER_WS" >/dev/null
-
+$AR invite accept "$INVITE_URL" --home "$BOB_HOME" --server "$SERVER_WS" >/dev/null
 sleep 0.5 # wait for SESSION_ACK round-trip
 
-# ── Alice listens ─────────────────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════════════
+# SCENARIO 1: Basic send → receive
+# ════════════════════════════════════════════════════════════════════
+log "=== Scenario 1: basic send → receive ==="
+
 ALICE_LOG="$WORK_DIR/alice_listen.jsonl"
-log "alice listening (background)..."
-node "$AGENTROOM_BIN" listen --home "$ALICE_HOME" --server "$SERVER_WS" --json >"$ALICE_LOG" 2>&1 &
+$AR listen --home "$ALICE_HOME" --server "$SERVER_WS" --json >"$ALICE_LOG" 2>&1 &
 LISTEN_PID=$!
 sleep 0.3
 
-# ── Bob sends ─────────────────────────────────────────────────────────────────
-log "bob sends message to alice..."
-node "$AGENTROOM_BIN" send "$ALICE_PK" "hello from bob smoke test" --home "$BOB_HOME" --server "$SERVER_WS"
+$AR send "$ALICE_PK" "hello from bob smoke test" --home "$BOB_HOME" --server "$SERVER_WS"
 
-# ── Verify delivery ───────────────────────────────────────────────────────────
-log "waiting for delivery (up to 5s)..."
-for i in $(seq 1 25); do
-	sleep 0.2
-	if grep -q "hello from bob smoke test" "$ALICE_LOG" 2>/dev/null; then
-		log "✓ message delivered"
-		exit 0
-	fi
-done
+wait_for "$ALICE_LOG" "hello from bob smoke test" 5 || fail "scenario 1: message not received"
+pass "scenario 1: message delivered"
 
-fail "message not received within 5s. Alice log: $(cat "$ALICE_LOG" 2>/dev/null || echo '(empty)')"
+kill "$LISTEN_PID" 2>/dev/null
+LISTEN_PID=""
+sleep 0.2
+
+# ════════════════════════════════════════════════════════════════════
+# SCENARIO 2: Session persistence — send works after process restart
+# ════════════════════════════════════════════════════════════════════
+log "=== Scenario 2: session persistence ==="
+
+ALICE_LOG2="$WORK_DIR/alice_listen2.jsonl"
+$AR listen --home "$ALICE_HOME" --server "$SERVER_WS" --json >"$ALICE_LOG2" 2>&1 &
+LISTEN_PID=$!
+sleep 0.3
+
+# Bob sends AGAIN — same session loaded from disk (no handshake needed)
+$AR send "$ALICE_PK" "session persisted across restart" --home "$BOB_HOME" --server "$SERVER_WS"
+
+wait_for "$ALICE_LOG2" "session persisted across restart" 5 || fail "scenario 2: persisted session not working"
+pass "scenario 2: session persistence OK"
+
+kill "$LISTEN_PID" 2>/dev/null
+LISTEN_PID=""
+sleep 0.2
+
+# Verify bob sees alice in peers list (sessions dir)
+PEERS_JSON=$($AR peers --home "$BOB_HOME" --json)
+echo "$PEERS_JSON" | grep -q "$ALICE_PK" || fail "scenario 2: alice not in bob's peers list"
+pass "scenario 2: peers list correct"
+
+# ════════════════════════════════════════════════════════════════════
+# SCENARIO 3: Store-and-forward (offline → online)
+# ════════════════════════════════════════════════════════════════════
+log "=== Scenario 3: store-and-forward ==="
+
+# Alice is offline — bob sends while alice is down
+$AR send "$ALICE_PK" "queued while alice offline" --home "$BOB_HOME" --server "$SERVER_WS"
+log "message queued to offline alice"
+
+ALICE_LOG3="$WORK_DIR/alice_listen3.jsonl"
+$AR listen --home "$ALICE_HOME" --server "$SERVER_WS" --json >"$ALICE_LOG3" 2>&1 &
+LISTEN_PID=$!
+
+wait_for "$ALICE_LOG3" "queued while alice offline" 8 || fail "scenario 3: queued message not delivered on reconnect"
+pass "scenario 3: store-and-forward OK"
+
+kill "$LISTEN_PID" 2>/dev/null
+LISTEN_PID=""
+sleep 0.2
+
+# ════════════════════════════════════════════════════════════════════
+# SCENARIO 4: Server restart → client reconnects and resumes
+# ════════════════════════════════════════════════════════════════════
+log "=== Scenario 4: server restart + client reconnect ==="
+
+ALICE_LOG4="$WORK_DIR/alice_listen4.jsonl"
+$AR listen --home "$ALICE_HOME" --server "$SERVER_WS" --json >"$ALICE_LOG4" 2>&1 &
+LISTEN_PID=$!
+sleep 0.3
+
+# Kill server
+log "killing server..."
+kill "$SERVER_PID" 2>/dev/null
+SERVER_PID=""
+sleep 0.5
+
+# Restart server
+log "restarting server..."
+start_server
+sleep 0.5
+
+# Bob sends after server restart (alice is reconnecting via autoReconnect)
+# Give alice time to reconnect (backoff 1s)
+sleep 2
+
+$AR send "$ALICE_PK" "after server restart" --home "$BOB_HOME" --server "$SERVER_WS"
+
+wait_for "$ALICE_LOG4" "after server restart" 10 || {
+	log "alice log: $(cat "$ALICE_LOG4" 2>/dev/null || echo '(empty)')"
+	fail "scenario 4: message not received after server restart"
+}
+pass "scenario 4: server restart + reconnect OK"
+
+kill "$LISTEN_PID" 2>/dev/null
+LISTEN_PID=""
+
+# ── Summary ───────────────────────────────────────────────────────────────────
+echo ""
+log "All smoke scenarios passed ✓"

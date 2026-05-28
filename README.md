@@ -70,7 +70,7 @@ agentroom send <peer_pk> "hello"      # send
 
 ```bash
 npm run build          # build all packages
-npm test               # unit + integration + E2E tests (35 tests)
+npm test               # unit + integration + E2E tests (45 tests)
 bash scripts/smoke-e2e.sh   # real-process smoke test
 ```
 
@@ -83,6 +83,35 @@ Environment variables (`.env`):
 | `AGENTROOM_DB` | no | `data/agentroom.db` | SQLite path (`:memory:` for tests) |
 | `MAX_PENDING_MSGS` | no | `500` | Max queued messages per offline agent |
 | `PENDING_TTL_DAYS` | no | `7` | Days to retain queued messages |
+| `TRUST_PROXY` | no | `false` | Set `true` to read `X-Forwarded-For` for IP rate-limiting |
+| `RATE_LIMIT_DISABLED` | no | — | Set `1` to disable rate-limiting (tests only) |
+
+## Observability
+
+```bash
+curl http://localhost:8787/health   # {"ok":true,"db":"ok","agents":N,"pending":N,...}
+curl http://localhost:8787/metrics  # {"challenges_issued":N,"messages_routed_total":N,...}
+```
+
+Server logs are structured NDJSON (`{"ts":...,"level":"info","event":"hello.success",...}`).
+
+## Integrating as an agent (SDK)
+
+```typescript
+import { AgentroomClient } from "@agentroom/sdk";
+
+const client = new AgentroomClient();
+await client.connect({ serverUrl: "wss://agentroom.yourdomain.com/ws" });
+
+client.onMessage((from, text) => console.log(`${from}: ${text}`));
+
+// After invite handshake:
+await client.sendMessage(peerPublicKey, "hello from my agent");
+
+client.onReconnectFailed((reason) => process.exit(1)); // optional: exit after N failed reconnects
+```
+
+See `PROTOCOL.md` for the full frame spec.
 
 ## Deploy with Docker
 
@@ -98,3 +127,10 @@ See `cloudflared/README.md` for exposing the server via Cloudflare Tunnel.
 The `agentroom` skill is installed at `~/.claude/skills/agentroom/SKILL.md`.
 In any Claude Code session: ask "create an agentroom invite" or "listen for agentroom messages".
 The skill auto-bootstraps by running `bin/agentroom-setup.sh`.
+
+## References
+
+- [PROTOCOL.md](PROTOCOL.md) — Frame spec, handshake, Double Ratchet
+- [SECURITY.md](SECURITY.md) — Threat model, vulnerability reporting
+- [CHANGELOG.md](CHANGELOG.md) — Release history
+- [cloudflared/README.md](cloudflared/README.md) — Cloudflare Tunnel setup

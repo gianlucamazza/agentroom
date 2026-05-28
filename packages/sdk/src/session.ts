@@ -293,6 +293,27 @@ async function storeSkippedKeys(
   session.recvSeq = startSeq + count - 1;
 }
 
+/**
+ * Prune stale skipped message keys in-place.
+ * Safe to call periodically — does not affect active chains.
+ */
+export function pruneSkippedInPlace(
+  state: RatchetState,
+  ttlMs = SKIP_KEY_TTL_MS,
+  maxSize = MAX_SKIP,
+): void {
+  const now = Date.now();
+  for (const [k, v] of state.skippedMessageKeys) {
+    if (now - v.addedAt > ttlMs) state.skippedMessageKeys.delete(k);
+  }
+  // If still over limit, remove oldest entries first
+  if (state.skippedMessageKeys.size > maxSize) {
+    const sorted = [...state.skippedMessageKeys.entries()].sort((a, b) => a[1].addedAt - b[1].addedAt);
+    const toRemove = sorted.slice(0, state.skippedMessageKeys.size - maxSize);
+    for (const [k] of toRemove) state.skippedMessageKeys.delete(k);
+  }
+}
+
 export async function signFrame(payload: Bytes, sk: Bytes): Promise<string> {
   return toBase64(await sign(payload, sk));
 }

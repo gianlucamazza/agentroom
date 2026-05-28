@@ -39,7 +39,9 @@ if ! command -v agentroom >/dev/null 2>&1 && [[ ! -f "$AGENTROOM_BIN" ]]; then
 		out_error "agentroom repo not found at $REPO_ROOT. Clone the repo first."
 	fi
 	cd "$REPO_ROOT"
-	npm install --silent 2>/dev/null && npm run build --silent 2>/dev/null || true
+	BUILD_OUT="$(npm install 2>&1 && npm run build 2>&1)" || {
+		out_error "Build failed: $(printf '%s' "$BUILD_OUT" | tail -5)"
+	}
 fi
 
 # Resolve actual CLI runner
@@ -101,5 +103,18 @@ if [[ -z "$SRV" ]] && [[ -f "$SERVER_URL_FILE" ]]; then
 	SRV="$(cat "$SERVER_URL_FILE")"
 fi
 SRV="${SRV:-}"
+
+# ── 6. Probe server health (skippable with --no-probe) ───────────────────────
+NO_PROBE=false
+for arg in "$@"; do [[ "$arg" == "--no-probe" ]] && NO_PROBE=true; done
+
+if [[ "$NO_PROBE" == false ]] && [[ -n "$SRV" ]]; then
+	HTTP_BASE="${SRV/\/ws/}"
+	HTTP_BASE="${HTTP_BASE/wss:\/\//https://}"
+	HTTP_BASE="${HTTP_BASE/ws:\/\//http://}"
+	if ! curl -fsS --max-time 3 "$HTTP_BASE/health" >/dev/null 2>&1; then
+		out_error "Server unreachable at $HTTP_BASE/health. Pass --no-probe to skip."
+	fi
+fi
 
 out_ok "$PK" "$ID_FILE" "$SRV"

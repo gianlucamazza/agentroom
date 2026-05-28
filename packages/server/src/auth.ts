@@ -1,7 +1,59 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { store } from "./store.js";
 
 const CHALLENGE_TTL_MS = 60_000;
 const challenges = new Map<string, number>();
+
+// Cleanup challenges on a fixed timer instead of lazy-at-1000
+const challengeCleanupTimer = setInterval(() => {
+  const cutoff = Date.now() - CHALLENGE_TTL_MS;
+  for (const [k, v] of challenges) {
+    if (v < cutoff) challenges.delete(k);
+  }
+}, 60_000);
+challengeCleanupTimer.unref?.();
+
+export function clearChallengeInterval() {
+  clearInterval(challengeCleanupTimer);
+}
+
+// ── token bucket rate limiter ──────────────────────────────────────────────
+
+interface Bucket {
+  tokens: number;
+  lastRefill: number;
+}
+
+const rateBuckets = new Map<string, Bucket>();
+
+function consumeRate(key: string, capacity: number, refillPerSec: number): boolean {
+  if (process.env["RATE_LIMIT_DISABLED"] === "1") return true;
+  const now = Date.now();
+  let bucket = rateBuckets.get(key);
+  if (!bucket) {
+    bucket = { tokens: capacity, lastRefill: now };
+    rateBuckets.set(key, bucket);
+  } else {
+    const elapsed = (now - bucket.lastRefill) / 1000;
+    bucket.tokens = Math.min(capacity, bucket.tokens + elapsed * refillPerSec);
+    bucket.lastRefill = now;
+  }
+  if (bucket.tokens < 1) return false;
+  bucket.tokens -= 1;
+  return true;
+}
+
+// 10 challenges per minute per IP
+export function consumeChallengeRate(ip: string): boolean {
+  return consumeRate(`challenge:${ip}`, 10, 10 / 60);
+}
+
+// 5 HELLO failures per minute per IP
+export function consumeHelloFailRate(ip: string): boolean {
+  return consumeRate(`hello_fail:${ip}`, 5, 5 / 60);
+}
+
+// ── HMAC secret ───────────────────────────────────────────────────────────
 
 let _secret: string | null = null;
 function secret(): string {
@@ -18,16 +70,11 @@ function secret(): string {
   return _secret;
 }
 
+// ── challenge ─────────────────────────────────────────────────────────────
+
 export function issueChallenge(): string {
   const token = randomBytes(24).toString("base64url");
   challenges.set(token, Date.now());
-  // lazy cleanup
-  if (challenges.size > 1000) {
-    const cutoff = Date.now() - CHALLENGE_TTL_MS;
-    for (const [k, v] of challenges) {
-      if (v < cutoff) challenges.delete(k);
-    }
-  }
   return token;
 }
 
@@ -38,8 +85,12 @@ export function consumeChallenge(token: string): boolean {
   return Date.now() - ts < CHALLENGE_TTL_MS;
 }
 
+// ── session tokens ────────────────────────────────────────────────────────
+// Format: base64url(jti.pk.ts) + "." + hmac
+
 export function issueSessionToken(ed25519_pk: string): string {
-  const payload = `${ed25519_pk}.${Date.now()}`;
+  const jti = randomBytes(8).toString("base64url");
+  const payload = `${jti}.${ed25519_pk}.${Date.now()}`;
   const mac = createHmac("sha256", secret()).update(payload).digest("base64url");
   return `${Buffer.from(payload).toString("base64url")}.${mac}`;
 }
@@ -47,19 +98,27 @@ export function issueSessionToken(ed25519_pk: string): string {
 export function verifySessionToken(
   token: string,
   maxAgeMs = 3_600_000,
-): { valid: true; pk: string } | { valid: false } {
+): { valid: true; pk: string; jti: string } | { valid: false } {
   try {
-    const [payloadB64, mac] = token.split(".");
+    const dotIdx = token.indexOf(".");
+    if (dotIdx < 0) return { valid: false };
+    const payloadB64 = token.slice(0, dotIdx);
+    const mac = token.slice(dotIdx + 1);
     if (!payloadB64 || !mac) return { valid: false };
     const payload = Buffer.from(payloadB64, "base64url").toString();
     const expectedMac = createHmac("sha256", secret()).update(payload).digest("base64url");
     if (!timingSafeEqual(Buffer.from(mac), Buffer.from(expectedMac))) {
       return { valid: false };
     }
-    const [pk, tsStr] = payload.split(".");
+    const parts = payload.split(".");
+    if (parts.length < 3) return { valid: false };
+    const jti = parts[0]!;
+    const tsStr = parts[parts.length - 1]!;
+    const pk = parts.slice(1, -1).join(".");
     if (!pk || !tsStr) return { valid: false };
     if (Date.now() - parseInt(tsStr, 10) > maxAgeMs) return { valid: false };
-    return { valid: true, pk };
+    if (store.isRevoked(jti)) return { valid: false };
+    return { valid: true, pk, jti };
   } catch {
     return { valid: false };
   }

@@ -32,6 +32,10 @@ VOLUME /data
 ENV AGENTROOM_DB=/data/agentroom.db
 ENV PORT=8787
 
+# Run as non-root (node user ships with node:22-alpine)
+RUN chown -R node:node /app /data 2>/dev/null || true
+USER node
+
 EXPOSE 8787
 
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \

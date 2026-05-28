@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ["22", "24"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Unit + Integration tests
+        run: npm run test --workspaces --if-present
+        env:
+          HMAC_SECRET: ${{ secrets.HMAC_SECRET || 'testonly_hmac_secret_minimum_32_chars' }}
+          AGENTROOM_DB: ":memory:"
+          RATE_LIMIT_DISABLED: "1"
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t agentroom:ci .
+
+      - name: Smoke Docker health
+        run: |
+          docker run -d --name agentroom-ci \
+            -e HMAC_SECRET=testonly_hmac_secret_minimum_32_chars \
+            -p 8787:8787 \
+            agentroom:ci
+          sleep 3
+          curl -fsS http://localhost:8787/health
+          docker logs agentroom-ci
+          docker stop agentroom-ci

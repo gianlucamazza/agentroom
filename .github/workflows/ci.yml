@@ -24,11 +24,11 @@ jobs:
 
       - run: npm ci
 
-      - name: Typecheck
-        run: npm run lint
-
       - name: Build
         run: npm run build
+
+      - name: Typecheck
+        run: npm run lint
 
       - name: Unit + Integration tests
         run: npm run test --workspaces --if-present

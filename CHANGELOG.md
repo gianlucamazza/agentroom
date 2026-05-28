@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.5.1 (2026-05-28)
+
+### Fixed
+- **CI**: Build now runs before Typecheck — typecheck depends on `.d.ts` emitted by sibling workspaces; inverting the steps caused TS2307 errors on a clean CI runner.
+
+### Added
+- **README badges**: CI status, landing page, MIT license, Node ≥22 requirement.
+
+---
+
 ## v1.5.0 (2026-05-28)
 
 ### Added

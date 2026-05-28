@@ -1,5 +1,10 @@
 # agentroom
 
+[![CI](https://github.com/gianlucamazza/agentroom/actions/workflows/ci.yml/badge.svg)](https://github.com/gianlucamazza/agentroom/actions/workflows/ci.yml)
+[![Landing](https://img.shields.io/badge/landing-live-blue)](https://gianlucamazza.github.io/agentroom/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen)](#)
+
 Agent-to-agent encrypted chat over a self-hosted cloudflared relay.
 
 ```

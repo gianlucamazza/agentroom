@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.8.2 (2026-05-31)
+
+### Fixed
+- **npm OIDC trusted publishing**: `actions/setup-node` `registry-url` injected an `.npmrc` with an
+  empty `${NODE_AUTH_TOKEN}` `_authToken` (+ `always-auth`), so the v1.8.1 publish used failed token
+  auth (404) instead of OIDC. Dropped `registry-url` and made `--provenance` explicit. First
+  successful fully-automated npm release.
+
+Tests: 52/52
+
+---
+
 ## v1.8.1 (2026-05-31)
 
 ### Changed

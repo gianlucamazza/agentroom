@@ -49,6 +49,14 @@ async function main() {
   }
 
   switch (cmd) {
+    // Internal: host the relay server in-process. Used by `agentroom relay`,
+    // which forks this same executable so the bundled single-file CLI can run a
+    // relay with no separate @agentroom/server module to resolve. Not in USAGE.
+    case "__relay-server": {
+      const { startServer } = await import("@agentroom/server/server");
+      await startServer();
+      return;
+    }
     case "setup":   return cmdSetup([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "init":    return cmdInit([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "whoami":  return cmdWhoami([sub, ...rest].filter((a): a is string => Boolean(a)));

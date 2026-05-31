@@ -1,20 +1,24 @@
 import { defineConfig } from "tsup";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, readdirSync } from "fs";
+import { join } from "path";
 
 export default defineConfig({
-  entry: ["src/index.ts"],
+  // index.ts = entry that auto-starts (npm run dev / Docker / `node dist/index.js`).
+  // server.ts = startServer() export, hosted in-process by the bundled CLI.
+  entry: ["src/index.ts", "src/server.ts"],
   format: ["esm"],
   dts: false,
   sourcemap: true,
   clean: true,
+  splitting: true,
   // esbuild strips "node:" prefix from built-in imports (node:sqlite → sqlite).
-  // Restore it post-build so Node can resolve the built-in correctly.
+  // Restore it post-build across all emitted chunks so Node resolves the built-in.
   async onSuccess() {
-    const dist = "dist/index.js";
-    const src = readFileSync(dist, "utf8").replace(
-      /from "sqlite"/g,
-      'from "node:sqlite"',
-    );
-    writeFileSync(dist, src);
+    for (const f of readdirSync("dist")) {
+      if (!f.endsWith(".js")) continue;
+      const p = join("dist", f);
+      const src = readFileSync(p, "utf8").replace(/from\s*"sqlite"/g, 'from "node:sqlite"');
+      writeFileSync(p, src);
+    }
   },
 });

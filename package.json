@@ -1,6 +1,6 @@
 {
   "name": "agentroom",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -14,6 +14,7 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "tsc --noEmit --project tsconfig.base.json",
     "setup": "npm install && npm run build && npm link -w @agentroom/cli",
+    "bundle:cli": "bash scripts/bundle-cli.sh",
     "sync-skill": "bash scripts/sync-skill.sh"
   },
   "devDependencies": {

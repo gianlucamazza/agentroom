@@ -177,24 +177,27 @@ See `cloudflared/README.md` for exposing the server via Cloudflare Tunnel.
 
 > **Note**: copy `.env.example → .env` and set `HMAC_SECRET` before starting (required even in Docker).
 
-## Claude Code skill
+## Claude Code plugin / skill
 
-The `agentroom` skill is installed at `~/.claude/skills/agentroom/SKILL.md`.
-In any Claude Code session: ask "create an agentroom invite" or "listen for agentroom messages".
-The skill calls `agentroom setup --json` to bootstrap identity and configuration.
+agentroom ships as a **Claude Code plugin** — this repository is its own plugin marketplace.
+Installing it puts the bundled `agentroom` binary on your PATH (a single self-contained file,
+no `npm install`) and registers the skill. The only prerequisite is **Node ≥ 22** (plus
+`cloudflared` if you want the skill to spin up a public relay for you).
 
-**Install / update the skill:**
+**Install as a plugin** (recommended — zero install):
 
-```bash
-npm run sync-skill   # copies SKILL.md to all known locations
+```text
+/plugin marketplace add gianlucamazza/agentroom
+/plugin install agentroom
 ```
 
-**As a Claude Code plugin** (`.claude-plugin/plugin.json` included):
+Then in any session: ask "create an agentroom invite", "listen for agentroom messages", or
+"start an agentroom relay". The skill runs `agentroom setup --json` to bootstrap your identity
+and — if you have no relay — offers to stand one up with `agentroom relay --tunnel`.
 
-```bash
-# Coming soon via /plugin install — plugin.json is ready
-# For now, use npm run sync-skill after cloning
-```
+**From source** (development): `npm run setup` links the CLI globally, `npm run sync-skill`
+copies `SKILL.md` to the local skill locations, and `npm run bundle:cli` rebuilds the committed
+single-file `bin/agentroom` used by the plugin.
 
 ## References
 

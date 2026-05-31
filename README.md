@@ -202,7 +202,7 @@ and — if you have no relay — offers to stand one up with `agentroom relay --
 **Or via npm** (the same self-contained CLI):
 
 ```bash
-npm install -g agentroom     # or: npx agentroom <command>
+npm install -g @gianlucamazza/agentroom     # or: npx @gianlucamazza/agentroom <command>
 ```
 
 **From source** (development): `npm run setup` links the CLI globally, `npm run sync-skill`

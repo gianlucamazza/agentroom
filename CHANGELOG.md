@@ -6,12 +6,14 @@
 - **Publishing pipeline (CI/CD).** Three GitHub Actions workflows, all tag-driven (`v*.*.*`):
   - `release.yml` — gates on build + tests + bundle-in-sync, then creates a **GitHub Release** with
     notes extracted from this CHANGELOG and attaches `bin/agentroom` + `SHA256SUMS`.
-  - `npm-publish.yml` — publishes the self-contained CLI to **npm** (`agentroom`) via OIDC **trusted
+  - `npm-publish.yml` — publishes the self-contained CLI to **npm** (`@gianlucamazza/agentroom`) via OIDC **trusted
     publishing** (no tokens, automatic provenance). Dormant until the maintainer opts in (own the npm
     package, register the trusted publisher, set repo variable `PUBLISH_NPM=true`).
   - `pages.yml` — deploys the landing to **GitHub Pages** via Actions (`configure`/`upload`/`deploy-pages`).
-- **`publish/`** — a zero-dependency npm package (just the bundled `bin/agentroom`) so `npm i -g agentroom`
-  / `npx agentroom` work; version injected from the tag at publish time.
+- **`publish/`** — a zero-dependency npm package (just the bundled `bin/agentroom`), published as
+  **`@gianlucamazza/agentroom`** so `npm i -g @gianlucamazza/agentroom` / `npx @gianlucamazza/agentroom`
+  work; version injected from the tag at publish time. (Unscoped `agentroom` is blocked by npm as too
+  similar to an existing package, hence the scope.)
 - **`scripts/changelog-extract.sh`** — pulls a version's section from the CHANGELOG for release notes.
 
 ### Changed

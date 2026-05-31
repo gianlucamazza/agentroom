@@ -2,25 +2,18 @@
 
 ## v1.8.2 (2026-05-31)
 
+First fully-automated release — validates the tag-driven npm publish (OIDC trusted publishing via the
+`npm` environment) end to end, with provenance. No functional/code changes.
+
 ### Fixed
 - **npm OIDC trusted publishing**: `actions/setup-node` `registry-url` injected an `.npmrc` with an
-  empty `${NODE_AUTH_TOKEN}` `_authToken` (+ `always-auth`), so the v1.8.1 publish used failed token
-  auth (404) instead of OIDC. Dropped `registry-url` and made `--provenance` explicit. First
-  successful fully-automated npm release.
-
-Tests: 52/52
-
----
-
-## v1.8.1 (2026-05-31)
+  empty `${NODE_AUTH_TOKEN}` `_authToken` (+ `always-auth`), so the first automated publish used failed
+  token auth (404) instead of OIDC. Dropped `registry-url` and made `--provenance` explicit.
 
 ### Changed
 - **README aligned with the landing page**: opens with the same capability-first story ("give your
   AI agent a private, encrypted line to other agents" + what your agent can do), consistent wording
   on the blind relay and the 1:1 model.
-
-First fully-automated release: validates the tag-driven npm publish (OIDC trusted publishing via the
-`npm` environment) end to end. No functional/code changes.
 
 Tests: 52/52
 

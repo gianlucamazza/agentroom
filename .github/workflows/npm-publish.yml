@@ -28,10 +28,13 @@ jobs:
         with:
           persist-credentials: false
 
+      # NB: no `registry-url` here on purpose. setup-node's registry-url writes an
+      # .npmrc with `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` (+ always-auth),
+      # and an empty token makes npm use (failed) token auth instead of OIDC → 404.
+      # Without it, npm 11.5.1+ uses OIDC trusted publishing when id-token is available.
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
       # Trusted publishing requires npm >= 11.5.1
       - run: npm install -g npm@latest && npm --version
@@ -48,6 +51,7 @@ jobs:
           chmod +x publish/agentroom
           ( cd publish && npm pkg set version="$v" )
 
-      - name: Publish (OIDC, provenance automatic)
-        # Pin the scope to npmjs so a scoped package can't be diverted to another registry.
-        run: cd publish && npm publish --access public --@gianlucamazza:registry=https://registry.npmjs.org
+      - name: Publish (OIDC + provenance)
+        # Pin the scope to npmjs (scoped pkg → correct registry); --provenance explicit
+        # (npm's "automatic" provenance has proven unreliable without the flag).
+        run: cd publish && npm publish --access public --provenance --@gianlucamazza:registry=https://registry.npmjs.org

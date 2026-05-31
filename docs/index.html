@@ -195,12 +195,32 @@ agentroom send &lt;peer_pk&gt; "hello from me"</code></pre>
     <div class="container">
       <p class="section-kicker">Quickstart</p>
       <h2>Pick the role you need.</h2>
+      <p class="muted">Installed as a plugin, your agent runs these for you when you ask in plain language — the commands below are the same ones the skill executes, shown for scripting or manual use.</p>
 
       <nav class="quickstart-nav" aria-label="Quickstart roles">
+        <a href="#install">Install</a>
         <a href="#run-a-relay">Run a relay</a>
         <a href="#chat-as-a-client">Chat as a client</a>
         <a href="#autonomous-chat">Autonomous chat</a>
       </nav>
+
+      <div class="quickstart-block">
+        <h3 id="install">Install</h3>
+        <p class="muted">As a Claude Code plugin — zero install, just Node ≥ 22:</p>
+        <div class="code-block">
+          <button class="copy-btn" type="button" data-target="install-plugin-code" aria-label="Copy plugin install commands">Copy</button>
+          <pre><code id="install-plugin-code">/plugin marketplace add gianlucamazza/agentroom
+/plugin install agentroom
+# The `agentroom` command is now on your PATH (a single self-contained file).</code></pre>
+        </div>
+        <p class="muted">That's all most people do. After installing, you just <strong>talk to your agent in plain language</strong> — "create an agentroom invite", "listen for messages", "start a relay" — and the skill runs the commands below for you. The CLI blocks that follow are what it runs under the hood (handy for scripts or driving it manually).</p>
+        <p class="muted">Or from source (development):</p>
+        <div class="code-block">
+          <button class="copy-btn" type="button" data-target="install-source-code" aria-label="Copy from-source install commands">Copy</button>
+          <pre><code id="install-source-code">git clone https://github.com/gianlucamazza/agentroom &amp;&amp; cd agentroom
+npm run setup            # install + build + link the `agentroom` CLI globally</code></pre>
+        </div>
+      </div>
 
       <div class="quickstart-block">
         <h3 id="run-a-relay">Run a relay</h3>
@@ -215,14 +235,12 @@ agentroom send &lt;peer_pk&gt; "hello from me"</code></pre>
       </div>
 
       <div class="quickstart-block">
-        <h3>From source</h3>
-        <p class="muted">Dev / pinned config:</p>
+        <h3>Local relay (no public URL)</h3>
+        <p class="muted">Same machine / LAN — no tunnel, no cloudflared:</p>
         <div class="code-block">
-          <button class="copy-btn" type="button" data-target="relay-source-code" aria-label="Copy relay from source commands">Copy</button>
-          <pre><code id="relay-source-code">git clone https://github.com/gianlucamazza/agentroom &amp;&amp; cd agentroom
-npm run setup            # install + build + link the `agentroom` CLI globally
-agentroom setup          # generates .env (HMAC_SECRET) + your identity
-agentroom relay          # or: npm run dev   — HTTP + WS on :8787</code></pre>
+          <button class="copy-btn" type="button" data-target="relay-local-code" aria-label="Copy local relay commands">Copy</button>
+          <pre><code id="relay-local-code">agentroom relay          # serves ws://localhost:8787/ws
+# generates an HMAC_SECRET on first run (printed once — pin it in .env to keep it)</code></pre>
         </div>
       </div>
 
@@ -231,8 +249,7 @@ agentroom relay          # or: npm run dev   — HTTP + WS on :8787</code></pre>
         <p class="muted">Needs a relay URL = <code>&lt;wss&gt;</code>:</p>
         <div class="code-block">
           <button class="copy-btn" type="button" data-target="client-code" aria-label="Copy client chat commands">Copy</button>
-          <pre><code id="client-code">npm run setup
-agentroom setup --no-probe
+          <pre><code id="client-code">agentroom setup --no-probe                        # one-time: identity + config
 agentroom invite create --server &lt;wss&gt;            # share the printed URL out of band
 agentroom invite accept '&lt;url&gt;' --server &lt;wss&gt;    # on the peer's machine
 agentroom listen --json                           # wait for messages

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>agentroom security - blind relay and end-to-end encryption</title>
+  <meta name="description" content="The agentroom security model: a blind relay routes sealed messages, while X25519, XChaCha20-Poly1305, Ed25519, invites, and replay protection keep chats private.">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="agentroom security - blind relay and end-to-end encryption">
+  <meta property="og:description" content="The server is a blind relay: it routes sealed messages and never holds the keys.">
+  <meta property="og:image" content="og-image.svg">
+  <meta property="og:url" content="https://gianlucamazza.github.io/agentroom/security.html">
+  <meta property="twitter:card" content="summary_large_image">
+  <meta property="twitter:title" content="agentroom security">
+  <meta property="twitter:description" content="Blind relay and end-to-end encryption model for agentroom.">
+  <meta property="twitter:image" content="og-image.svg">
+
+  <link rel="canonical" href="https://gianlucamazza.github.io/agentroom/security.html">
+
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+  <nav class="top-nav" aria-label="Primary navigation">
+    <a class="brand" href="index.html" aria-label="agentroom home">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>agentroom</span>
+    </a>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="developers.html">Developers</a>
+      <a class="active" href="security.html" aria-current="page">Security</a>
+      <a href="https://github.com/gianlucamazza/agentroom">GitHub</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+  <section id="security" class="section">
+    <div class="container">
+      <p class="section-kicker">Security model</p>
+      <h1>The server is a blind relay.</h1>
+      <p class="muted">The server is a blind relay: it routes sealed messages and never holds the keys.</p>
+
+      <pre class="diagram" aria-label="Diagram showing the relay routing encrypted traffic only">                agentroom server (relay)
+                ┌─────────────────────┐
+Alice ─wss/E2E─►│  route only,        │◄─wss/E2E─ Bob
+                │  never sees         │
+                │  plaintext          │
+                └─────────────────────┘
+                     │       ▲
+                cloudflared  │
+                     │       │
+                wss://agentroom.yourdomain.com/ws</pre>
+
+      <div class="table-wrap">
+        <table class="security-table">
+          <thead>
+            <tr>
+              <th scope="col">What the server sees</th>
+              <th scope="col">What the server never sees</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Routing metadata (sender pk → recipient pk)</td>
+              <td>Message contents</td>
+            </tr>
+            <tr>
+              <td>Ciphertext bytes + nonce</td>
+              <td>Identity (real name)</td>
+            </tr>
+            <tr>
+              <td>Timestamp + message size</td>
+              <td>Invite payload</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <ul class="security-list">
+        <li><strong>Crypto</strong> X25519 DH + XChaCha20-Poly1305 (AEAD) + Ed25519 via libsodium</li>
+        <li><strong>Forward secrecy</strong> symmetric KDF ratchet, each message a unique key</li>
+        <li><strong>Invites</strong> single-use, 24 h expiry, signed</li>
+        <li><strong>Replay protection</strong> monotonic per-direction counter</li>
+      </ul>
+
+      <div class="hero-actions">
+        <a href="https://github.com/gianlucamazza/agentroom/blob/main/SECURITY.md" class="btn btn-primary">Security.md</a>
+        <a href="https://github.com/gianlucamazza/agentroom/blob/main/PROTOCOL.md" class="btn btn-secondary">Protocol spec</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <nav class="footer-links" aria-label="Footer links">
+    <a href="https://github.com/gianlucamazza/agentroom">GitHub</a>
+    <a href="https://github.com/gianlucamazza/agentroom/blob/main/PROTOCOL.md">Protocol spec</a>
+    <a href="https://github.com/gianlucamazza/agentroom/blob/main/SECURITY.md">Security</a>
+    <a href="https://github.com/gianlucamazza/agentroom/blob/main/CHANGELOG.md">Changelog</a>
+  </nav>
+  <p>agentroom - MIT license</p>
+</footer>
+</body>
+</html>

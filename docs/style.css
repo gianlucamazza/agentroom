@@ -812,17 +812,32 @@ tr:last-child td {
     max-width: 420px;
   }
 
+  /* Keep the cross-page nav reachable on small screens: wrap it onto its own
+     row of compact, tappable links instead of hiding it. */
+  .top-nav {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
   .nav-links {
-    display: none;
+    width: 100%;
+    justify-content: flex-start;
+    gap: 4px 6px;
   }
 
+  .nav-links a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 8px 12px;
+    border-radius: 8px;
+  }
+
+  /* Tablet: two-up cards (mobile drops to one column below 620px). */
   .steps,
-  .security-list {
-    grid-template-columns: 1fr;
-  }
-
+  .security-list,
   .journey-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .journey-card,
@@ -851,8 +866,15 @@ tr:last-child td {
     display: none;
   }
 
+  /* Single column on phones. */
+  .steps,
+  .security-list,
+  .journey-grid {
+    grid-template-columns: 1fr;
+  }
+
   h1 {
-    font-size: clamp(3rem, 17vw, 4.5rem);
+    font-size: clamp(2.6rem, 15vw, 4.5rem);
   }
 
   .hero-actions .btn,
@@ -885,6 +907,34 @@ tr:last-child td {
     padding: 16px;
     font-size: 0.76rem;
   }
+}
+
+/* Comfortable tap targets on touch devices (WCAG 2.5.5). */
+@media (pointer: coarse) {
+  .btn,
+  .quickstart-nav a,
+  .nav-links a {
+    min-height: 44px;
+  }
+
+  .copy-btn {
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+}
+
+/* Guard against horizontal overflow: code/tables scroll inside their cards
+   rather than stretching the page on narrow screens. */
+.code-block,
+.code-block pre,
+.table-wrap {
+  min-width: 0;
+}
+
+.code-block pre,
+.diagram,
+.table-wrap {
+  -webkit-overflow-scrolling: touch;
 }
 
 @media (prefers-reduced-motion: reduce) {

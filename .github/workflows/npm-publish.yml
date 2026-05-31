@@ -24,7 +24,7 @@ jobs:
     # on npmjs.com must set Environment name = npm to match the OIDC claim.
     environment: npm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
@@ -32,7 +32,7 @@ jobs:
       # .npmrc with `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` (+ always-auth),
       # and an empty token makes npm use (failed) token auth instead of OIDC → 404.
       # Without it, npm 11.5.1+ uses OIDC trusted publishing when id-token is available.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
 

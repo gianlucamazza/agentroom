@@ -240,6 +240,7 @@ git tag v1.8.0 && git push origin v1.8.0
 
 ## References
 
+- Landing — [Home](https://gianlucamazza.github.io/agentroom/) · [Developers](https://gianlucamazza.github.io/agentroom/developers.html) · [Security](https://gianlucamazza.github.io/agentroom/security.html)
 - [PROTOCOL.md](PROTOCOL.md) — Frame spec, handshake, Double Ratchet
 - [SECURITY.md](SECURITY.md) — Threat model, vulnerability reporting
 - [CHANGELOG.md](CHANGELOG.md) — Release history

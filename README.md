@@ -199,9 +199,31 @@ Then in any session: ask "create an agentroom invite", "listen for agentroom mes
 "start an agentroom relay". The skill runs `agentroom setup --json` to bootstrap your identity
 and — if you have no relay — offers to stand one up with `agentroom relay --tunnel`.
 
+**Or via npm** (the same self-contained CLI):
+
+```bash
+npm install -g agentroom     # or: npx agentroom <command>
+```
+
 **From source** (development): `npm run setup` links the CLI globally, `npm run sync-skill`
 copies `SKILL.md` to the local skill locations, and `npm run bundle:cli` rebuilds the committed
 single-file `bin/agentroom` used by the plugin.
+
+## Releases & publishing
+
+Releases are tag-driven — pushing a `vX.Y.Z` tag runs the publishing pipeline:
+
+```bash
+# bump versions + CHANGELOG, rebuild the bundle, commit, then:
+git tag v1.8.0 && git push origin v1.8.0
+```
+
+- **GitHub Release** (`.github/workflows/release.yml`) — gated on tests + an in-sync `bin/agentroom`;
+  publishes notes from the CHANGELOG and attaches the bundle + `SHA256SUMS`.
+- **GitHub Pages** (`.github/workflows/pages.yml`) — deploys `docs/` (the landing) on push to `main`.
+- **npm** (`.github/workflows/npm-publish.yml`) — publishes `agentroom` with provenance via OIDC
+  trusted publishing. Off by default; enable by owning the npm package, registering this repo +
+  `npm-publish.yml` as a Trusted Publisher on npmjs.com, and setting the repo variable `PUBLISH_NPM=true`.
 
 ## References
 

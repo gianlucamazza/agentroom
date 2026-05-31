@@ -1,0 +1,31 @@
+{
+  "name": "agentroom",
+  "version": "0.0.0",
+  "description": "Encrypted agent-to-agent chat over a self-hosted relay — a single self-contained CLI (client + relay). E2E encrypted, blind server, invite-only.",
+  "bin": {
+    "agentroom": "agentroom"
+  },
+  "files": [
+    "agentroom",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT",
+  "homepage": "https://gianlucamazza.github.io/agentroom/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gianlucamazza/agentroom.git"
+  },
+  "keywords": [
+    "agents",
+    "chat",
+    "encryption",
+    "e2e",
+    "relay",
+    "agent-to-agent",
+    "cli"
+  ],
+  "author": "gianlucamazza"
+}

@@ -10,7 +10,6 @@ packages/server/data/
 data/
 cloudflared/*.json
 cloudflared/*.yml
-!cloudflared/config.yml.example
 .DS_Store
 # identity files — never commit private keys
 identity.json

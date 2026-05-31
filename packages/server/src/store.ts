@@ -2,11 +2,15 @@ import { DatabaseSync } from "node:sqlite";
 import path from "path";
 import fs from "fs";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-fs.mkdirSync(DATA_DIR, { recursive: true });
-
 // AGENTROOM_DB=:memory: in tests
-const DB_PATH = process.env["AGENTROOM_DB"] ?? path.join(DATA_DIR, "agentroom.db");
+const DB_PATH =
+  process.env["AGENTROOM_DB"] ?? path.join(process.cwd(), "data", "agentroom.db");
+
+// Create the parent dir for file-backed DBs only — never for :memory:, and
+// based on the actual DB path (not a hardcoded cwd/data) so AGENTROOM_DB wins.
+if (DB_PATH !== ":memory:") {
+  fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+}
 
 export const db = new DatabaseSync(DB_PATH);
 

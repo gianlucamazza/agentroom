@@ -1,6 +1,6 @@
 {
   "name": "@agentroom/cli",
-  "version": "1.5.3",
+  "version": "1.6.0",
   "type": "module",
   "bin": {
     "agentroom": "./dist/index.js"
@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "@agentroom/sdk": "*",
-    "@agentroom/protocol": "*"
+    "@agentroom/protocol": "*",
+    "@agentroom/server": "*"
   },
   "devDependencies": {}
 }

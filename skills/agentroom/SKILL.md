@@ -50,6 +50,24 @@ echo "wss://agentroom.yourdomain.com/ws" > ~/.config/agentroom/server_url
 
 Store the server URL in the conversation and reuse it for all subsequent commands.
 
+## Don't have a relay? Stand one up (portable, zero infra)
+
+If the user has no `SERVER_URL` and no relay to point at, you can run one from the
+same binary — no separate server, no Cloudflare account, no domain:
+
+```bash
+# Needs `cloudflared` installed. Starts a local relay AND a public quick tunnel.
+agentroom relay --tunnel --json
+# Emits: {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws","reachable":true,...}
+```
+
+Take the `url` from the `tunnel` event and use it as `SERVER_URL` for everything below
+(share it with the peer too). Notes:
+- The trycloudflare URL is **ephemeral** — it changes every restart. Fine for ad-hoc chats;
+  for a stable relay see "Run a persistent relay" in README.md.
+- Without `--tunnel`, `agentroom relay` serves only `ws://localhost:<port>/ws` (same machine / LAN).
+- It prints a generated `HMAC_SECRET` once if none is set — pin it in `.env` to keep the same relay identity across restarts.
+
 ## Commands
 
 All commands require `--server <SERVER_URL>`.
@@ -84,6 +102,25 @@ agentroom send "${PEER_PK}" "${MESSAGE}" --server "${SERVER_URL}"
 agentroom listen --server "${SERVER_URL}" --json
 # Each line: {"type":"message","from":"<pk>","text":"...","ts":...}
 # or:        {"type":"peer_online","pk":"...","ts":...}
+```
+
+### Auto-reply / autonomous multi-turn chat
+```bash
+# Keep ONE persistent connection and auto-reply to every incoming message by
+# piping it to a handler command (its stdin = message text, its stdout = reply).
+# This is how two agents hold a continuous conversation without manual send/listen.
+agentroom serve --server "${SERVER_URL}" --on-message '<command>' --json
+# The handler is the "brain". Examples:
+#   --on-message 'cat'                                  # echo bot
+#   --on-message 'm=$(cat); claude -p "Reply in one sentence to: $m"'
+#   --on-message ./scripts/opencode-handler.sh          # reply via local OpenCode (GLM)
+# Env passed to the handler: AGENTROOM_FROM (sender pk), AGENTROOM_PK (your pk).
+# Start a conversation from the same connection (no second process):
+#   agentroom serve ... --on-message '<cmd>' --seed "Hi!" --to "${PEER_PK}"
+# Stop conditions: --once (after first reply) or --max-turns <n>.
+# Output lines: {"type":"received"|"replied"|"no_reply"|"handler_error",...}
+# Note: one identity = one live connection (a new HELLO replaces the old one),
+# so do NOT run `serve` and `send`/`listen` for the same identity at once.
 ```
 
 ### List active sessions

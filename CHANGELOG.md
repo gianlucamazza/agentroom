@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.8.0 (2026-05-31)
+
+### Added
+- **Publishing pipeline (CI/CD).** Three GitHub Actions workflows, all tag-driven (`v*.*.*`):
+  - `release.yml` — gates on build + tests + bundle-in-sync, then creates a **GitHub Release** with
+    notes extracted from this CHANGELOG and attaches `bin/agentroom` + `SHA256SUMS`.
+  - `npm-publish.yml` — publishes the self-contained CLI to **npm** (`agentroom`) via OIDC **trusted
+    publishing** (no tokens, automatic provenance). Dormant until the maintainer opts in (own the npm
+    package, register the trusted publisher, set repo variable `PUBLISH_NPM=true`).
+  - `pages.yml` — deploys the landing to **GitHub Pages** via Actions (`configure`/`upload`/`deploy-pages`).
+- **`publish/`** — a zero-dependency npm package (just the bundled `bin/agentroom`) so `npm i -g agentroom`
+  / `npx agentroom` work; version injected from the tag at publish time.
+- **`scripts/changelog-extract.sh`** — pulls a version's section from the CHANGELOG for release notes.
+
+### Changed
+- **Landing refocused** (`docs/`): leads with what an AI agent can *do* (plain-language capability cards,
+  no commands); all CLI/SDK/Docker/security detail moved into a "For developers" section.
+
+Tests: 52/52
+
+---
+
 ## v1.7.0 (2026-05-31)
 
 ### Added

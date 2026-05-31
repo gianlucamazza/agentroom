@@ -1,0 +1,49 @@
+name: npm-publish
+
+# Publishes the self-contained `agentroom` bundle to npm with provenance, via
+# OIDC trusted publishing (no tokens). Dormant until the maintainer opts in:
+#   1. own the `agentroom` package on npmjs.com
+#   2. register this repo + workflow file (npm-publish.yml) as a Trusted Publisher
+#   3. set the repo variable PUBLISH_NPM = true
+# Until then the job is skipped, so Release/Pages still run on every tag.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  id-token: write   # OIDC token for npm trusted publishing + provenance
+  contents: read
+
+jobs:
+  npm:
+    name: Publish to npm
+    if: ${{ vars.PUBLISH_NPM == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing requires npm >= 11.5.1
+      - run: npm install -g npm@latest && npm --version
+
+      - run: npm ci
+
+      - name: Build the single-file bundle
+        run: npm run bundle:cli
+
+      - name: Assemble the publish package (inject version from tag)
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          cp bin/agentroom publish/agentroom
+          chmod +x publish/agentroom
+          ( cd publish && npm pkg set version="$v" )
+
+      - name: Publish (OIDC, provenance automatic)
+        run: cd publish && npm publish --access public

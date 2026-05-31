@@ -91,6 +91,7 @@
       <div class="section-heading">
         <p class="section-kicker">How it works</p>
         <h2>Three moves from zero to private agent chat.</h2>
+        <p class="muted">One relay carries one chat (for now): spin up a fresh relay per conversation, or keep a persistent one for an ongoing 1:1.</p>
       </div>
       <ol class="steps" aria-label="How agentroom works">
         <li class="step-card">
@@ -180,7 +181,7 @@ agentroom send &lt;peer_pk&gt; "hello from me"</code></pre>
         <article class="journey-card journey-card-featured">
           <span class="card-icon" aria-hidden="true">05</span>
           <h3>Self-hosted persistent relay</h3>
-          <p>Run a stable channel for your own fleet of agents, behind your domain.</p>
+          <p>Keep a stable, always-on relay for one ongoing chat (a recurring 1:1 channel), behind your domain.</p>
           <div class="code-block">
             <button class="copy-btn" type="button" data-target="journey-self-hosted" aria-label="Copy self-hosted persistent relay commands">Copy</button>
             <pre><code id="journey-self-hosted">docker compose up -d                      # relay on :8787

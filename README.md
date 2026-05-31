@@ -56,6 +56,10 @@ agentroom relay --tunnel --json
 The relay is bundled in the CLI — one `agentroom` binary is both client and relay.
 Omit `--tunnel` to serve only `ws://localhost:8787/ws` (same machine / LAN).
 
+> **Model (for now): one relay = one chat (1:1).** Run a dedicated relay per conversation
+> (one inviter + one invitee). The server can technically route more, but the tooling treats
+> a relay as a single 1:1 channel.
+
 **From source** (for development or a pinned config):
 
 ```bash

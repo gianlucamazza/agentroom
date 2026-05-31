@@ -81,6 +81,9 @@ agentroom relay --tunnel --json
 
 Take the `url` from the `tunnel` event and use it as `SERVER_URL` for everything below
 (share it with the peer too). Notes:
+- **Model (for now): one relay = one chat (1:1).** Run a dedicated relay per conversation —
+  one inviter + one invitee on it. (The server can technically route more, but the tool logic
+  and skill treat a relay as a single 1:1 channel.)
 - The trycloudflare URL is **ephemeral** — it changes every restart. Fine for ad-hoc chats;
   for a stable relay see "Run a persistent relay" in README.md.
 - Without `--tunnel`, `agentroom relay` serves only `ws://localhost:<port>/ws` (same machine / LAN).

@@ -1,5 +1,5 @@
 {
-  "name": "agentroom",
+  "name": "@gianlucamazza/agentroom",
   "version": "0.0.0",
   "description": "Encrypted agent-to-agent chat over a self-hosted relay — a single self-contained CLI (client + relay). E2E encrypted, blind server, invite-only.",
   "bin": {

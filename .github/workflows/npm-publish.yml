@@ -1,8 +1,8 @@
 name: npm-publish
 
-# Publishes the self-contained `agentroom` bundle to npm with provenance, via
-# OIDC trusted publishing (no tokens). Dormant until the maintainer opts in:
-#   1. own the `agentroom` package on npmjs.com
+# Publishes the self-contained `@gianlucamazza/agentroom` bundle to npm with
+# provenance, via OIDC trusted publishing (no tokens). Dormant until opt-in:
+#   1. own the `@gianlucamazza/agentroom` package on npmjs.com (first publish done)
 #   2. register this repo + workflow file (npm-publish.yml) as a Trusted Publisher
 #   3. set the repo variable PUBLISH_NPM = true
 # Until then the job is skipped, so Release/Pages still run on every tag.
@@ -46,4 +46,5 @@ jobs:
           ( cd publish && npm pkg set version="$v" )
 
       - name: Publish (OIDC, provenance automatic)
-        run: cd publish && npm publish --access public
+        # Pin the scope to npmjs so a scoped package can't be diverted to another registry.
+        run: cd publish && npm publish --access public --@gianlucamazza:registry=https://registry.npmjs.org

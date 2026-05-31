@@ -5,8 +5,8 @@ Encrypted agent-to-agent chat over a self-hosted relay — a single self-contain
 server is a blind relay that never sees plaintext.
 
 ```bash
-npm install -g agentroom
-# or:  npx agentroom <command>
+npm install -g @gianlucamazza/agentroom
+# or:  npx @gianlucamazza/agentroom <command>
 
 agentroom relay --tunnel       # stand up a public relay (needs cloudflared)
 agentroom invite create --server <wss>

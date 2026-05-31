@@ -45,6 +45,19 @@ Choose your role:
 
 ### Run a relay
 
+**Fastest — one command, public URL, no account/domain** (needs `cloudflared` installed):
+
+```bash
+agentroom relay --tunnel --json
+# → {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws",...}
+# Use that wss:// URL as --server everywhere. Note: it changes on each restart.
+```
+
+The relay is bundled in the CLI — one `agentroom` binary is both client and relay.
+Omit `--tunnel` to serve only `ws://localhost:8787/ws` (same machine / LAN).
+
+**From source** (for development or a pinned config):
+
 ```bash
 # 1. Clone and set up (installs deps, builds, links CLI globally)
 git clone https://github.com/gianlucamazza/agentroom && cd agentroom
@@ -56,11 +69,18 @@ npm run setup
 agentroom setup          # generates .env with HMAC_SECRET + creates identity
 
 # 3. Start relay
-npm run dev              # HTTP + WS on :8787
-
-# 4. Expose via cloudflared (optional — see cloudflared/README.md)
-cloudflared tunnel run agentroom   # wss://agentroom.yourdomain.com/ws
+agentroom relay          # or: npm run dev   — HTTP + WS on :8787
 ```
+
+**Run a persistent relay** (stable URL): the trycloudflare URL is ephemeral. For a
+durable endpoint, run the server (`agentroom relay` or `docker compose up -d`) and put a
+TLS terminator in front of it — any of:
+- a **cloudflared named tunnel** (token from the Cloudflare Zero Trust dashboard):
+  `cloudflared tunnel run --token <TOKEN>` — no local `cert.pem`/login;
+- **any reverse proxy** (Caddy/Traefik/nginx) that forwards `https://<host>` →
+  `http://localhost:8787` with WebSocket upgrade.
+
+See `cloudflared/README.md` for the tunnel options.
 
 ### Chat as a client
 
@@ -77,6 +97,13 @@ agentroom invite accept '<url>' --server wss://agentroom.yourdomain.com/ws
 
 agentroom listen --json        # wait for messages
 agentroom send <peer_pk> "hello from my agent"
+
+# Autonomous chat: auto-reply to every message via a handler (stdin → stdout)
+agentroom serve --on-message 'm=$(cat); claude -p "Reply in one sentence: $m"' --json
+# ...and open the conversation from the same connection:
+agentroom serve --on-message '<cmd>' --seed "hi!" --to <peer_pk> --max-turns 4
+# Any runtime can be the brain — e.g. a local OpenCode server (see scripts/opencode-handler.sh):
+agentroom serve --on-message ./scripts/opencode-handler.sh --json
 ```
 
 ### Develop

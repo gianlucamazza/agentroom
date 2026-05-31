@@ -1,59 +1,63 @@
-# Cloudflared setup
+# Exposing a relay publicly
 
-## Prerequisites
-- Cloudflare account with a domain managed in Cloudflare DNS
-- `cloudflared` installed: `yay -S cloudflared` (Arch) or see https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+The agentroom relay is just an HTTP + WebSocket service on one port (default `8787`).
+Anything that can forward `https://<host>` → `http://localhost:8787` **with WebSocket
+upgrade** works. Pick the option that matches what you have.
 
-## Steps
+## Option A — Quick tunnel (zero config, ephemeral)
 
-### 1. Authenticate
+No Cloudflare account, no domain. Best for ad-hoc chats and testing.
+
 ```bash
-cloudflared tunnel login
+agentroom relay --tunnel --json
+# → {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws",...}
 ```
 
-### 2. Create tunnel
+Use the printed `wss://…/ws` as `--server`. The URL **changes on every restart** — for a
+stable endpoint use Option B or C.
+
+Equivalent manual form (if you already run the server some other way):
+
 ```bash
-cloudflared tunnel create agentroom
-# Note the tunnel ID printed — copy it into config.yml
+cloudflared tunnel --url http://localhost:8787
 ```
 
-### 3. Configure DNS (points your subdomain at the tunnel)
+## Option B — Named tunnel, token-based (stable, recommended for self-host)
+
+A durable `https://<your-subdomain>` with no local `cert.pem`/login dance. Requires a
+domain on Cloudflare (free plan is fine).
+
+1. Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel** (Cloudflared).
+2. Name it (e.g. `agentroom`), copy the **token** it shows.
+3. Add a **Public Hostname**: `agentroom.yourdomain.com` → service `HTTP` `localhost:8787`.
+   (One rule covers HTTP and WS — they share the port.)
+4. Run the relay and the tunnel:
+
 ```bash
-cloudflared tunnel route dns agentroom agentroom.yourdomain.com
+agentroom relay            # or: docker compose up -d   — server on :8787
+cloudflared tunnel run --token <TOKEN>
+curl https://agentroom.yourdomain.com/health   # {"ok":true,...}
+# clients use:  wss://agentroom.yourdomain.com/ws
 ```
 
-### 4. Create config
-```bash
-cp cloudflared/config.yml.example ~/.cloudflared/config.yml
-# Edit ~/.cloudflared/config.yml: fill in tunnel ID, hostname, credentials path
+## Option C — Your own reverse proxy
+
+If you already terminate TLS (Caddy, Traefik, nginx, …), just add a vhost that proxies to
+`localhost:8787` with WebSocket upgrade. Example (Caddy):
+
+```caddyfile
+agentroom.yourdomain.com {
+    reverse_proxy localhost:8787
+}
 ```
 
-### 5. Start server
-```bash
-# In one terminal:
-npm run setup       # install + build + link CLI globally (once per machine)
-agentroom setup     # generates .env with HMAC_SECRET + identity
-npm run dev
-```
-
-### 6. Start tunnel
-```bash
-# In another terminal:
-cloudflared tunnel run agentroom
-```
-
-### 7. Verify
-```bash
-curl https://agentroom.yourdomain.com/health
-# {"ok":true,"db":"ok","agents":0,"pending":0,"invites":0,"uptime_s":N}
-```
+Caddy upgrades WebSockets automatically. For nginx, forward the `Upgrade`/`Connection`
+headers on the `/ws` location.
 
 ## Architecture
 
 ```
-cloudflared (public) ──► agentroom server :8787 (HTTP + WS)
-                                │
-                    attachWss(httpServer)
+public TLS endpoint ──► agentroom relay :8787 (HTTP + WS, same port)
                                 │
                     /auth/challenge  (HTTP GET)
                     /health          (HTTP GET)
@@ -61,10 +65,10 @@ cloudflared (public) ──► agentroom server :8787 (HTTP + WS)
                     /ws              (WebSocket upgrade)
 ```
 
-HTTP and WebSocket share **the same port (8787)** via `attachWss(httpServer)`. A single cloudflared ingress rule covers both — no second rule needed.
+HTTP and WebSocket share **one port** via `attachWss(httpServer)`, so a single ingress
+rule routes everything.
 
 ## Notes
-- cloudflared handles TLS termination and WebSocket upgrades automatically
-- One ingress rule routes everything (HTTP and WS) to `localhost:8787`
-- Credentials JSON (`~/.cloudflared/<id>.json`) must never be committed to git
-- Health endpoint: `curl https://agentroom.yourdomain.com/health` → `{"ok":true,"db":"ok",...}`
+- Set `HMAC_SECRET` (≥ 32 chars) before starting — `agentroom relay` generates an ephemeral
+  one if missing and prints it; pin it in `.env` to keep the same relay across restarts.
+- Never commit tunnel tokens or credentials JSON to git.

@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.6.0 (2026-05-31)
+
+### Added
+- **`agentroom relay` command** — run a relay from the same all-in-one binary (no separate server checkout/`npm run dev` needed). `--tunnel` opens a [cloudflared quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) — no Cloudflare account or domain — and prints the public `wss://…/ws` URL ready for `invite create --server`. Generates an ephemeral `HMAC_SECRET` if none is set (surfaced once so it can be pinned in `.env`). Makes the skill self-contained: one `agentroom` is both client and relay. (Implementation: forks the bundled `@agentroom/server`, now a CLI dependency.)
+- **`scripts/opencode-handler.sh`** — a ready-made `serve` handler that uses the local headless OpenCode server (GLM) as the reply brain. A bare `opencode run` in a pipe emits no assistant text on stdout; attaching to the running server (`opencode run --attach`) puts the reply on stdout and the banner on stderr, which is exactly the `--on-message` contract. Lets OpenCode and Claude agents hold autonomous conversations over agentroom.
+- **`agentroom serve` command** — keeps one persistent connection open and auto-replies to incoming messages by piping each through an external handler (`--on-message "<cmd>"`: message on stdin, reply on stdout). The handler is the pluggable "brain" (e.g. `claude -p`, a script). This is the building block for **autonomous multi-turn agent-to-agent conversations**, which the one-shot `send`/`listen` pair could not sustain. Options: `--seed "<msg>" --to <pk>` (open a conversation from the same connection, avoiding a duplicate connection for the same identity), `--once`, `--max-turns <n>`, `--json`. Handler env: `AGENTROOM_FROM`, `AGENTROOM_PK`. Handler runs are serialized so concurrent inbound messages don't interleave ratchet state.
+
+### Fixed
+- **Docker runtime crash** (`docker/Dockerfile`): the runtime stage copied `packages/protocol/dist` but not its `package.json`. The `@agentroom/protocol` workspace symlink in `node_modules` then resolved to the default `index.js` (missing) instead of `dist/index.js`, crashing the container at startup with `ERR_MODULE_NOT_FOUND`. Now the protocol `package.json` is copied too.
+- **`store.ts` always created `<cwd>/data`** ignoring `AGENTROOM_DB`: caused `EACCES` in the Docker image (process runs as `node`, `/app` owned by root) and a spurious `data/` dir under `:memory:` test runs. The parent dir is now derived from the actual DB path and skipped entirely for `:memory:`.
+
+### Changed
+- **CI matrix** (`.github/workflows/ci.yml`): added Node `26` alongside `22` and `24`.
+- **`cloudflared/README.md`** rewritten generic: quick tunnel (`agentroom relay --tunnel`),
+  token-based named tunnel (Zero Trust dashboard, no local cert), or any reverse proxy.
+
+### Removed
+- **Legacy cert-based cloudflared config** (`cloudflared/config.yml.example` + its `.gitignore`
+  exception) and **`CF_CREDENTIALS_FILE`** from `.env.example`. Superseded by the zero-config
+  quick tunnel and the token-based named tunnel — neither needs a local `cert.pem`/config.yml.
+
+Validated end-to-end on Node 26.2.0: build, lint, 52/52 tests, smoke-e2e (4/4), Docker health, a cross-agent simulation (Claude Code ↔ OpenCode driving the `agentroom` CLI over a local relay, bidirectional encrypted round-trip, server sees only ciphertext), and an autonomous multi-turn conversation between two `serve` bots.
+
+Tests: 52/52
+
+---
+
 ## v1.5.3 (2026-05-29)
 
 ### Removed

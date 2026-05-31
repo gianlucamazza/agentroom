@@ -25,6 +25,9 @@ COPY packages/server/package.json ./packages/server/
 # Install only server production deps
 RUN npm ci --workspace @agentroom/server --omit=dev --silent
 
+# protocol is a workspace dep symlinked into node_modules; it needs its package.json
+# (for the "main"/"exports" → dist/index.js resolution), not just the dist output.
+COPY --from=build /app/packages/protocol/package.json ./packages/protocol/
 COPY --from=build /app/packages/protocol/dist ./packages/protocol/dist
 COPY --from=build /app/packages/server/dist   ./packages/server/dist
 

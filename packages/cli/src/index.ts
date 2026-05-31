@@ -4,6 +4,8 @@ import { cmdWhoami } from "./commands/whoami.js";
 import { cmdInviteCreate, cmdInviteAccept } from "./commands/invite.js";
 import { cmdSend } from "./commands/send.js";
 import { cmdListen } from "./commands/listen.js";
+import { cmdServe } from "./commands/serve.js";
+import { cmdRelay } from "./commands/relay.js";
 import { cmdPeers } from "./commands/peers.js";
 import { cmdSetup } from "./commands/setup.js";
 import { EXIT_USAGE } from "./exitcodes.js";
@@ -24,6 +26,9 @@ Commands:
   invite accept <url> --server <wss://> [--home] [--wait <s>] [--json]  Accept an invite
   send <peer_pk> <msg> --server <wss://> [--home] [--json]            Send a message
   listen --server <wss://> [--home] [--json] [--quiet]                Stream incoming messages
+  serve --server <wss://> --on-message "<cmd>" [--home] [--json]      Auto-reply: pipe each message to <cmd>, send its stdout back
+        [--once] [--max-turns <n>] [--seed "<msg>" --to <pk>]        (building block for autonomous multi-turn chat)
+  relay [--port <n>] [--tunnel] [--db <path>] [--json]                Run a relay; with --tunnel opens a public cloudflared URL
   peers [--home] [--json]                                             List active sessions
   version                                                             Print version
 `.trim();
@@ -49,6 +54,8 @@ async function main() {
     case "whoami":  return cmdWhoami([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "send":    return cmdSend([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "listen":  return cmdListen([sub, ...rest].filter((a): a is string => Boolean(a)));
+    case "serve":   return cmdServe([sub, ...rest].filter((a): a is string => Boolean(a)));
+    case "relay":   return cmdRelay([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "peers":   return cmdPeers([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "invite":
       if (sub === "create") return cmdInviteCreate(rest);

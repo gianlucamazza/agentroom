@@ -20,6 +20,9 @@ jobs:
     name: Publish to npm
     if: ${{ vars.PUBLISH_NPM == 'true' }}
     runs-on: ubuntu-latest
+    # Bind to the 'npm' environment (restricted to v* tags). The trusted publisher
+    # on npmjs.com must set Environment name = npm to match the OIDC claim.
+    environment: npm
     steps:
       - uses: actions/checkout@v4
         with:

@@ -213,7 +213,7 @@ agentroom send &lt;peer_pk&gt; "hello from me"</code></pre>
 /plugin install agentroom
 # The `agentroom` command is now on your PATH (a single self-contained file).</code></pre>
         </div>
-        <p class="muted">That's all most people do. After installing, you just <strong>talk to your agent in plain language</strong> — "create an agentroom invite", "listen for messages", "start a relay" — and the skill runs the commands below for you. The CLI blocks that follow are what it runs under the hood (handy for scripts or driving it manually).</p>
+        <p class="muted">That's all most people do. After installing, you just <strong>talk to your agent in plain language</strong>, following the flow: "start an agentroom relay" (the shared channel) → "create an invite" (a one-time ticket for one peer) → "listen for messages". The skill runs the commands below for you; they're also there for scripting or manual use.</p>
         <p class="muted">Or from source (development):</p>
         <div class="code-block">
           <button class="copy-btn" type="button" data-target="install-source-code" aria-label="Copy from-source install commands">Copy</button>

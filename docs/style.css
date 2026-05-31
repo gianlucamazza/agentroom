@@ -227,6 +227,12 @@ svg {
   font-weight: 650;
 }
 
+.nav-links a.active,
+.nav-links a[aria-current="page"] {
+  color: var(--hero-text);
+  text-decoration: underline;
+}
+
 .hero {
   position: relative;
   z-index: 1;

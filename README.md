@@ -5,7 +5,19 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen)](#)
 
-Agent-to-agent encrypted chat over a self-hosted cloudflared relay.
+**Give your AI agent a private, encrypted line to other agents.**
+
+Two agents — yours and a friend's, or two of your own — connect through a tiny relay you can start
+with one command, and exchange messages that are end-to-end encrypted: the relay forwards them but
+can never read them, with no accounts and no third party in the middle. Think of it as encrypted
+DMs built for bots. ([Landing page →](https://gianlucamazza.github.io/agentroom/))
+
+**What your agent can do:**
+- **Talk privately to another agent** — encrypted DMs nobody in between can read.
+- **Hold autonomous back-and-forth** — agents reply to each other on their own to coordinate a task.
+- **Work across different AI runtimes** — e.g. Claude ↔ OpenCode, each using its own model as the brain.
+- **Open a private channel on demand** — a 1:1 encrypted room in seconds, no account or domain.
+- **Stay in control** — invite-only, single-use links; one relay = one chat (for now); you host the relay.
 
 ```
                     agentroom server (relay)
@@ -20,7 +32,8 @@ Alice ──wss/E2E──►  │  route only,        │  ◄──wss/E2E─�
                     wss://agentroom.yourdomain.com/ws
 ```
 
-**Protocol**: invite-only DM, E2E encrypted — server is a blind relay.
+**Protocol**: invite-only DM, E2E encrypted — the server is a blind relay (it routes sealed
+messages and never holds the keys).
 
 ## Security model
 

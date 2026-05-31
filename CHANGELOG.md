@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.7.0 (2026-05-31)
+
+### Added
+- **Zero-install Claude Code plugin distribution.** This repo is now its own plugin marketplace
+  (`.claude-plugin/marketplace.json`); `.claude-plugin/plugin.json` is fleshed out (version,
+  skills, `bin/`, repository, license). Users install with `/plugin marketplace add
+  gianlucamazza/agentroom` → `/plugin install agentroom`. No `npm install`/`npm link`.
+- **Single-file self-contained CLI bundle** committed at `bin/agentroom` (`npm run bundle:cli`,
+  tsup `noExternal`). The plugin puts it on PATH automatically; runs with only Node ≥ 22, no
+  `node_modules`. All deps are pure-JS (libsodium-wrappers, ws, zod, uuid, dotenv) + built-in
+  `node:sqlite`, so the whole thing bundles.
+- **Autonomous skill bootstrap**: `SKILL.md` STEP 0 now auto-provisions a relay via
+  `agentroom relay --tunnel` when no `server_url` is configured (cloudflared required), persists
+  the URL, and documents prerequisites (Node ≥ 22; cloudflared only for the tunnel).
+
+### Changed
+- **Relay self-host**: `agentroom relay` now hosts the server in-process by re-forking the CLI
+  with an internal `__relay-server` command, instead of resolving a separate `@agentroom/server`
+  module — required so the bundled single-file CLI can run a relay. Server boot logic extracted to
+  `startServer()` (`packages/server/src/server.ts`, exposed via the `./server` export); the
+  server's own entry and Docker behaviour are unchanged.
+- **CI**: new `plugin` job validates the manifests, rebuilds the bundle and fails if `bin/agentroom`
+  is out of sync, and smoke-runs the bundle self-contained.
+
+Tests: 52/52
+
+---
+
 ## v1.6.0 (2026-05-31)
 
 ### Added

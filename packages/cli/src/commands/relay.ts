@@ -1,9 +1,6 @@
 import { spawn, fork, type ChildProcess } from "child_process";
-import { createRequire } from "module";
 import { randomBytes } from "crypto";
 import { EXIT_ERROR, EXIT_NETWORK, EXIT_USAGE } from "../exitcodes.js";
-
-const require = createRequire(import.meta.url);
 
 function getArg(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
@@ -55,15 +52,6 @@ export async function cmdRelay(args: string[]) {
   };
   const human = (s: string) => { if (!jsonMode) console.error(`[relay] ${s}`); };
 
-  // Resolve the bundled server entry (workspace symlink → dist/index.js).
-  let serverEntry: string;
-  try {
-    serverEntry = require.resolve("@agentroom/server");
-  } catch {
-    console.error("@agentroom/server not found — reinstall the CLI from the agentroom repo (npm run setup).");
-    process.exit(EXIT_ERROR);
-  }
-
   let cf: ChildProcess | undefined;
   let srv: ChildProcess | undefined;
   let shuttingDown = false;
@@ -78,9 +66,14 @@ export async function cmdRelay(args: string[]) {
   // ── Start the server ──────────────────────────────────────────────────────
   const env: NodeJS.ProcessEnv = { ...process.env, HMAC_SECRET: hmac, PORT: String(port) };
   if (db) env["AGENTROOM_DB"] = db;
+  // Host the server in-process by re-forking this same executable with the
+  // internal `__relay-server` command. Works both in dev (entry = cli dist) and
+  // in the bundled single-file CLI (no separate @agentroom/server to resolve).
   // Keep our own stdout clean (it carries our JSON events); route the server's
   // NDJSON logs to stderr so they don't corrupt the event stream.
-  srv = fork(serverEntry, [], { env, stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  const selfEntry = process.argv[1];
+  if (!selfEntry) { console.error("cannot determine CLI entry to launch the relay server"); process.exit(EXIT_ERROR); }
+  srv = fork(selfEntry, ["__relay-server"], { env, stdio: ["ignore", "pipe", "pipe", "ipc"] });
   srv.stdout?.pipe(process.stderr);
   srv.stderr?.pipe(process.stderr);
   srv.on("exit", (code) => {

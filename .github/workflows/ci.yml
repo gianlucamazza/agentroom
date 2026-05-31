@@ -39,6 +39,47 @@ jobs:
           AGENTROOM_DB: ":memory:"
           RATE_LIMIT_DISABLED: "1"
 
+  plugin:
+    name: Plugin bundle & manifests
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Validate plugin & marketplace manifests
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = JSON.parse(fs.readFileSync(".claude-plugin/plugin.json", "utf8"));
+            const m = JSON.parse(fs.readFileSync(".claude-plugin/marketplace.json", "utf8"));
+            if (!p.name || !p.version) throw new Error("plugin.json missing name/version");
+            if (!m.name || !Array.isArray(m.plugins) || !m.plugins.length) throw new Error("marketplace.json missing plugins");
+            if (p.version !== require("./package.json").version) throw new Error("plugin.json version != package.json version");
+            console.log("manifests ok:", p.name, p.version);
+          '
+
+      - name: Rebuild bundle and check it is committed in sync
+        run: |
+          npm run bundle:cli
+          git diff --exit-code -- bin/agentroom \
+            || (echo "::error::bin/agentroom is stale — run 'npm run bundle:cli' and commit" && exit 1)
+
+      - name: Smoke — bundle runs self-contained (no node_modules in cwd)
+        run: |
+          tmp="$(mktemp -d)"
+          cd "$tmp"
+          node "$GITHUB_WORKSPACE/bin/agentroom" version
+
   docker:
     name: Docker build
     runs-on: ubuntu-latest

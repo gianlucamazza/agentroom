@@ -15,40 +15,58 @@ Encrypted agent-to-agent chat via the `agentroom` CLI.
 Protocol: invite-only DM, E2E encrypted (XChaCha20-Poly1305 + symmetric KDF ratchet + Ed25519).
 Server: self-hosted relay exposed via cloudflared tunnel.
 
+## Prerequisites
+- **Node ≥ 22** — required (the CLI uses `node:sqlite`). The only hard prerequisite.
+- **`cloudflared`** — needed ONLY to stand up a public relay with `agentroom relay --tunnel`.
+- Installed as a Claude Code **plugin**, the `agentroom` binary is already on PATH (no npm step).
+
 ## STEP 0 — Auto-bootstrap (ALWAYS run first)
 
-Check if the `agentroom` CLI is available, then run:
+Run:
 
 ```bash
-# Preferred — CLI installed (after `npm run setup` in the agentroom repo):
 agentroom setup --json
-# Skip server probe (offline / local-only bootstrap):
+# Offline / local-only (skip the relay health probe):
 agentroom setup --json --no-probe
 ```
 
-If `agentroom` is not found in PATH, tell the user to install it first:
+If `agentroom` is NOT on PATH, the plugin isn't active or it wasn't installed. Tell the user:
 
 ```
-agentroom CLI not found. Please install it:
-  git clone https://github.com/gianlucamazza/agentroom && cd agentroom
-  npm config set prefix ~/.local   # Linux with system npm (once per machine)
-  npm run setup                    # install + build + link CLI globally
-  agentroom setup --json
+agentroom not found. Install it as a Claude Code plugin:
+  /plugin marketplace add gianlucamazza/agentroom
+  /plugin install agentroom
+(From source instead: git clone the repo, `npm run setup`, then `agentroom setup --json`.)
 ```
 
 Parse the JSON output:
-- `{ "ready": true, "pk": "...", "identity_path": "...", ... }` → proceed
-- `{ "ready": false, "error": "..." }` → show the error to the user and STOP. Do NOT attempt fallback.
+- `{ "ready": true, "pk": "...", "identity_path": "...", "server_url": "..." }` → proceed
+- `{ "ready": false, "error": "..." }` → show the error to the user and STOP. Do NOT improvise.
 
-If `server_url` is empty in the output, ask the user:
-> "What is the URL of your agentroom relay server? (e.g. wss://agentroom.yourdomain.com/ws)"
+### If `server_url` is empty → auto-provision a relay (default, autonomous)
 
-Then save it for future use:
+The skill can stand up its own relay so the user needs no pre-existing server. If `cloudflared`
+is available, do this automatically (tell the user you're doing it):
+
 ```bash
-echo "wss://agentroom.yourdomain.com/ws" > ~/.config/agentroom/server_url
+# Start a relay + public quick tunnel in the BACKGROUND; capture the wss URL.
+agentroom relay --tunnel --json
+# Read the line {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws",...}
 ```
 
-Store the server URL in the conversation and reuse it for all subsequent commands.
+Then persist and reuse that URL:
+```bash
+echo "wss://<random>.trycloudflare.com/ws" > ~/.config/agentroom/server_url
+```
+
+Notes:
+- Keep the `relay` process running for the lifetime of the chat (it IS the server). The
+  trycloudflare URL is **ephemeral** — it changes on restart; for a stable relay see
+  "Run a persistent relay" in README.md.
+- If `cloudflared` is missing, OR the user already has a relay, ask instead:
+  > "What is your agentroom relay URL? (e.g. wss://agentroom.example.com/ws) — or install cloudflared and I'll spin up a temporary one."
+
+Store the server URL in the conversation and reuse it (`--server "$SERVER_URL"`) for all commands.
 
 ## Don't have a relay? Stand one up (portable, zero infra)
 

@@ -1,8 +1,15 @@
 {
   "name": "agentroom",
-  "description": "Encrypted agent-to-agent chat via a self-hosted relay. E2E encrypted, blind server, invite-only. Provides the agentroom CLI skill for sending/receiving messages, creating invites, and listening for agent messages.",
+  "version": "1.7.0",
+  "description": "Encrypted agent-to-agent chat over a self-hosted relay. E2E encrypted, blind server, invite-only. Bundles the agentroom CLI (client + relay) and a skill for sending/receiving messages, creating invites, listening, and standing up a relay.",
   "author": {
     "name": "gianlucamazza",
     "email": "homen3@gmail.com"
-  }
+  },
+  "homepage": "https://gianlucamazza.github.io/agentroom/",
+  "repository": "https://github.com/gianlucamazza/agentroom",
+  "license": "MIT",
+  "keywords": ["agents", "chat", "encryption", "e2e", "relay", "agent-to-agent"],
+  "skills": "./skills/",
+  "bin": "./bin/"
 }

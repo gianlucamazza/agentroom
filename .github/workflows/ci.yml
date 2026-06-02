@@ -1,16 +1,15 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
 
-# Cancel superseded runs: pushing a new commit to a PR (or a newer merge to
-# main) cancels the in-flight run for that same ref instead of stacking.
-# PR runs (refs/pull/*) and the post-merge main run (refs/heads/main) use
-# different groups, so the main safety-net run is never cancelled by a PR.
+# Branch protection requires these checks with the branch up to date ("strict"),
+# so the PR run tests the exact post-merge tree — re-running on the push to main
+# would repeat identical work and is intentionally dropped. Cancel superseded
+# runs so new commits on a PR don't stack. Use the "Run workflow" button
+# (workflow_dispatch) to run CI against main manually if ever needed.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

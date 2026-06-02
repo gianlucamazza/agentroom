@@ -9676,7 +9676,7 @@ function getArg4(args, flag) {
   const i = args.indexOf(flag);
   return i >= 0 ? args[i + 1] : void 0;
 }
-function runHandler(cmd2, text, env) {
+function runHandler(cmd2, text, env, timeoutMs) {
   return new Promise((resolve) => {
     const child = spawn(cmd2, {
       shell: true,
@@ -9684,12 +9684,30 @@ function runHandler(cmd2, text, env) {
     });
     let out = "";
     let err = "";
+    let settled = false;
+    const done = (r) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      resolve(r);
+    };
+    let killTimer;
+    const timer = setTimeout(() => {
+      err += `
+[agentroom] handler timed out after ${Math.round(timeoutMs / 1e3)}s \u2014 killed`;
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => child.kill("SIGKILL"), 2e3);
+      killTimer.unref?.();
+      done({ reply: "", code: -1, stderr: err.trim() });
+    }, timeoutMs);
+    timer.unref?.();
     child.stdout.on("data", (d) => out += d.toString());
     child.stderr.on("data", (d) => err += d.toString());
-    child.on("error", (e) => resolve({ reply: "", code: -1, stderr: String(e) }));
+    child.on("error", (e) => done({ reply: "", code: -1, stderr: String(e) }));
     child.on(
       "close",
-      (code) => resolve({ reply: (code ?? 0) === 0 ? out.trim() : "", code: code ?? 0, stderr: err })
+      (code) => done({ reply: (code ?? 0) === 0 ? out.trim() : "", code: code ?? 0, stderr: err })
     );
     child.stdin.write(text);
     child.stdin.end();
@@ -9710,6 +9728,16 @@ async function cmdServe(args) {
   const jsonMode = args.includes("--json");
   const once = args.includes("--once");
   const maxTurns = Number(getArg4(args, "--max-turns") ?? "0");
+  if (!Number.isInteger(maxTurns) || maxTurns < 0) {
+    console.error("--max-turns must be a non-negative integer (0 = unlimited)");
+    process.exit(EXIT_USAGE);
+  }
+  const handlerTimeoutSec = Number(getArg4(args, "--handler-timeout") ?? "120");
+  if (!Number.isFinite(handlerTimeoutSec) || handlerTimeoutSec < 0) {
+    console.error("--handler-timeout must be a non-negative number of seconds (0 = no timeout)");
+    process.exit(EXIT_USAGE);
+  }
+  const handlerTimeoutMs = handlerTimeoutSec === 0 ? 2147483647 : handlerTimeoutSec * 1e3;
   const seed = getArg4(args, "--seed");
   const seedTo = getArg4(args, "--to");
   if (seed && !seedTo) {
@@ -9733,7 +9761,7 @@ async function cmdServe(args) {
     chain = chain.then(async () => {
       emit({ type: "received", from, text });
       human(`recv ${from.slice(0, 12)}\u2026  ${text}`);
-      const { reply, code, stderr } = await runHandler(onMessage, text, { from, pk: client.publicKey() });
+      const { reply, code, stderr } = await runHandler(onMessage, text, { from, pk: client.publicKey() }, handlerTimeoutMs);
       if (code !== 0) {
         emit({ type: "handler_error", from, code, stderr: stderr.slice(0, 500) });
         human(`handler exited ${code} \u2014 no reply sent. ${stderr.slice(0, 200)}`);

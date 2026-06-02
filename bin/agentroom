@@ -9896,9 +9896,26 @@ async function cmdRelay(args) {
   const shutdown = (code = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    cf?.kill("SIGTERM");
-    srv?.kill("SIGTERM");
-    setTimeout(() => process.exit(code), 300);
+    const pending = /* @__PURE__ */ new Set();
+    for (const child of [srv, cf]) {
+      if (child && child.exitCode === null && !child.killed) {
+        pending.add(child);
+        child.once("exit", () => {
+          pending.delete(child);
+          if (pending.size === 0) process.exit(code);
+        });
+      }
+    }
+    if (pending.size === 0) {
+      process.exit(code);
+      return;
+    }
+    for (const child of pending) child.kill("SIGTERM");
+    const force = setTimeout(() => {
+      for (const child of pending) child.kill("SIGKILL");
+      process.exit(code);
+    }, 6e3);
+    force.unref?.();
   };
   const env = { ...process.env, HMAC_SECRET: hmac, PORT: String(port) };
   if (db2) env["AGENTROOM_DB"] = db2;

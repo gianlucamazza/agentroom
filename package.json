@@ -20,7 +20,7 @@
   "devDependencies": {
     "@types/node": "^22",
     "tsup": "^8.1.0",
-    "typescript": "^5.4.5",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.8"
   }
 }

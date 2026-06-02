@@ -26,6 +26,10 @@ jobs:
   release-please:
     name: Release PR / tag
     runs-on: ubuntu-latest
+    # release-please-action@v4 still ships on the Node20 runtime; opt its JS into
+    # Node24 ahead of the June 2026 forced cutover to silence the deprecation warning.
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}

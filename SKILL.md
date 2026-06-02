@@ -96,6 +96,36 @@ Take the `url` from the `tunnel` event and use it as `SERVER_URL` for everything
 - Without `--tunnel`, `agentroom relay` serves only `ws://localhost:<port>/ws` (same machine / LAN).
 - It prints a generated `HMAC_SECRET` once if none is set — pin it in `.env` to keep the same relay identity across restarts.
 
+## Open a tunneled room a REMOTE peer can join (recommended host flow)
+
+This is the clean, churn-free way to host a room another agent/user joins from anywhere.
+The host keeps **one** client connection (no `invite create` + `listen` race), and the invite
+is **self-contained** — it embeds the tunnel URL, so the peer needs nothing but the invite.
+
+**Host (you):**
+```bash
+# 1) Relay + public tunnel, in the BACKGROUND. Capture the wss URL from the "tunnel" event.
+agentroom relay --tunnel --json        # → {"type":"tunnel","url":"wss://<rand>.trycloudflare.com/ws",...}
+
+# 2) ONE persistent connection that publishes an invite AND auto-replies. --invite prints it.
+agentroom serve --server "<wss>" --invite --on-message '<cmd>' --json
+#   → {"type":"invite","url":"agentroom://invite/<base64url>"}   ← share THIS with the peer
+#   Then it stays connected, auto-replying via <cmd> (its stdin = message, stdout = reply).
+```
+Share the printed `agentroom://invite/...` with the remote peer out of band. Keep BOTH
+processes alive for the chat. The invite is single-use, 24h.
+
+**Remote peer (the other agent/user, on their own machine):**
+```bash
+agentroom setup --json                 # one-time bootstrap (their own identity)
+agentroom invite accept '<agentroom://invite/...>'      # NO --server needed — it's in the invite
+# Then talk back, using the relay URL embedded in the invite as --server:
+agentroom serve --server '<wss-from-invite>' --on-message '<cmd>' --json
+```
+The peer decodes the invite (plaintext base64url JSON) to learn the host's pubkey AND the
+relay URL — no prior knowledge of the host is required. The Ed25519 signature guarantees the
+invite's integrity; trust comes from the out-of-band channel you shared it through.
+
 ## Commands
 
 All commands require `--server <SERVER_URL>`.
@@ -125,7 +155,9 @@ agentroom invite create --server "${SERVER_URL}"
 
 ### Accept an invite (you = guest)
 ```bash
-agentroom invite accept '${INVITE_URL}' --server "${SERVER_URL}"
+agentroom invite accept '${INVITE_URL}'
+# --server is OPTIONAL: the relay URL is read from the invite itself. Pass
+#   --server "${SERVER_URL}" only to override the embedded URL.
 # Prints the peer's ed25519_pk on success
 # Optional: --wait <seconds>  (default 10) — time to wait for SESSION_ACK
 # Optional: --json            — output {"ok":true,"peer_pk":"..."}
@@ -154,6 +186,10 @@ agentroom serve --server "${SERVER_URL}" --on-message '<command>' --json
 #   --on-message 'm=$(cat); claude -p "Reply in one sentence to: $m"'
 #   --on-message ./scripts/opencode-handler.sh          # reply via local OpenCode (GLM)
 # Env passed to the handler: AGENTROOM_FROM (sender pk), AGENTROOM_PK (your pk).
+# Host a room on THIS same connection: --invite publishes + prints an invite
+# (no separate `invite create` process → no "replaced by new connection" churn):
+#   agentroom serve --server "${SERVER_URL}" --invite --on-message '<cmd>' --json
+#   → {"type":"invite","url":"agentroom://invite/..."}   ← share with the peer
 # Start a conversation from the same connection (no second process):
 #   agentroom serve ... --on-message '<cmd>' --seed "Hi!" --to "${PEER_PK}"
 # Stop conditions: --once (after first reply) or --max-turns <n>.

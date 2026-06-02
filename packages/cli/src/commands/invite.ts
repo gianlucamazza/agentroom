@@ -1,4 +1,5 @@
 import { AgentroomClient } from "@agentroom/sdk";
+import { parseInviteUrl } from "@agentroom/protocol";
 import { EXIT_USAGE } from "../exitcodes.js";
 
 function getArg(args: string[], flag: string): string | undefined {
@@ -13,6 +14,18 @@ function requireArg(args: string[], flag: string, name: string): string {
     process.exit(EXIT_USAGE);
   }
   return v;
+}
+
+/**
+ * Which relay to accept against. The invite blob already carries the inviter's
+ * `server_url` (the tunnel), so an explicit --server is optional — it only
+ * overrides. Returns null if neither is available (caller errors out).
+ */
+export function resolveAcceptServer(
+  explicit: string | undefined,
+  blobServerUrl: string | undefined,
+): string | null {
+  return explicit ?? blobServerUrl ?? null;
 }
 
 export async function cmdInviteCreate(args: string[]) {
@@ -50,11 +63,23 @@ export async function cmdInviteAccept(args: string[]) {
     process.exit(EXIT_USAGE);
   }
 
-  const server = requireArg(args, "--server", "wss://host/ws");
   const home = getArg(args, "--home");
   const jsonMode = args.includes("--json");
   let waitSec = parseInt(getArg(args, "--wait") ?? "10", 10);
   if (!Number.isFinite(waitSec) || waitSec <= 0) waitSec = 10;
+
+  // The tunnel/relay URL lives inside the invite, so --server is optional here —
+  // decode the blob first and fall back to its server_url. --server still overrides.
+  const parsed = await parseInviteUrl(urlArg);
+  if (!parsed.ok) {
+    console.error(parsed.error);
+    process.exit(EXIT_USAGE);
+  }
+  const server = resolveAcceptServer(getArg(args, "--server"), parsed.signed.blob.server_url);
+  if (!server) {
+    console.error("No relay URL: invite has no server_url and --server <wss://host/ws> was not given");
+    process.exit(EXIT_USAGE);
+  }
 
   const client = new AgentroomClient();
   await client.connect({ serverUrl: server, home });

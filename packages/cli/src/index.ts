@@ -23,11 +23,11 @@ Commands:
   init [--home <dir>] [--json]                                        Generate or show identity
   whoami [--home <dir>]                                               Print public keys as JSON
   invite create --server <wss://> [--home] [--json]                   Create and publish an invite
-  invite accept <url> --server <wss://> [--home] [--wait <s>] [--json]  Accept an invite
+  invite accept <url> [--server <wss://>] [--home] [--wait <s>] [--json]  Accept an invite (relay URL taken from the invite if --server omitted)
   send <peer_pk> <msg> --server <wss://> [--home] [--json]            Send a message
   listen --server <wss://> [--home] [--json] [--quiet]                Stream incoming messages
   serve --server <wss://> --on-message "<cmd>" [--home] [--json]      Auto-reply: pipe each message to <cmd>, send its stdout back
-        [--once] [--max-turns <n>] [--seed "<msg>" --to <pk>]        (building block for autonomous multi-turn chat)
+        [--invite] [--once] [--max-turns <n>] [--seed "<msg>" --to <pk>]  (--invite publishes+prints an invite on this connection)
   relay [--port <n>] [--tunnel] [--db <path>] [--json]                Run a relay; with --tunnel opens a public cloudflared URL
   peers [--home] [--json]                                             List active sessions
   version                                                             Print version

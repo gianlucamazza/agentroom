@@ -35,7 +35,7 @@ If `agentroom` is NOT on PATH, the plugin isn't active or it wasn't installed. T
 ```
 agentroom not found. Install it as a Claude Code plugin:
   /plugin marketplace add gianlucamazza/agentroom
-  /plugin install agentroom
+  /plugin install agentroom@gm-tools
 (From source instead: git clone the repo, `npm run setup`, then `agentroom setup --json`.)
 ```
 

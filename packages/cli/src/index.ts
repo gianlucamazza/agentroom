@@ -6,6 +6,7 @@ import { cmdSend } from "./commands/send.js";
 import { cmdListen } from "./commands/listen.js";
 import { cmdServe } from "./commands/serve.js";
 import { cmdRelay } from "./commands/relay.js";
+import { cmdRoom, cmdRoomOpen } from "./commands/room.js";
 import { cmdPeers } from "./commands/peers.js";
 import { cmdSetup } from "./commands/setup.js";
 import { EXIT_USAGE } from "./exitcodes.js";
@@ -19,7 +20,7 @@ const USAGE = `
 agentroom ${version} — agent-to-agent encrypted chat
 
 Commands:
-  setup [--cwd <dir>] [--home <dir>] [--force] [--json]              First-run bootstrap (reads AGENTROOM_HOME env)
+  setup [--cwd <dir>] [--home <dir>] [--force] [--json]              First-run bootstrap (--force rotates the identity)
   init [--home <dir>] [--json]                                        Generate or show identity
   whoami [--home <dir>]                                               Print public keys as JSON
   invite create --server <wss://> [--home] [--json]                   Create and publish an invite
@@ -29,6 +30,10 @@ Commands:
   serve --server <wss://> --on-message "<cmd>" [--home] [--json]      Auto-reply: pipe each message to <cmd>, send its stdout back
         [--invite] [--once] [--max-turns <n>] [--seed "<msg>" --to <pk>]  (--invite publishes+prints an invite on this connection)
   relay [--port <n>] [--tunnel] [--db <path>] [--json]                Run a relay; with --tunnel opens a public cloudflared URL
+  room open --on-message "<cmd>" [--no-tunnel] [--port <n>] [--json]  Open a tunneled room in one process: relay + tunnel + invite + auto-reply
+        [--home] [--once] [--max-turns <n>] [--seed "<msg>" --to <pk>]  (alias: agentroom host)
+  room status [--home] [--json]                                       List running rooms (pid, tunnel URL, uptime)
+  room stop [--port <n>] [--all] [--home] [--json]                    Stop a running room by pid (no manual kill)
   peers [--home] [--json]                                             List active sessions
   version                                                             Print version
 `.trim();
@@ -64,6 +69,8 @@ async function main() {
     case "listen":  return cmdListen([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "serve":   return cmdServe([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "relay":   return cmdRelay([sub, ...rest].filter((a): a is string => Boolean(a)));
+    case "room":    return cmdRoom([sub, ...rest].filter((a): a is string => Boolean(a)));
+    case "host":    return cmdRoomOpen([sub, ...rest].filter((a): a is string => Boolean(a))); // alias for `room open`
     case "peers":   return cmdPeers([sub, ...rest].filter((a): a is string => Boolean(a)));
     case "invite":
       if (sub === "create") return cmdInviteCreate(rest);

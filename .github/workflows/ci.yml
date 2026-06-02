@@ -47,6 +47,15 @@ jobs:
           AGENTROOM_DB: ":memory:"
           RATE_LIMIT_DISABLED: "1"
 
+      # Real end-to-end run over actual CLI + relay processes (invite → listen →
+      # send → receive, persistence, store-and-forward, server restart+reconnect).
+      # Run once (Node 22) — it exercises the live paths the unit tests can't.
+      - name: Smoke E2E (real CLI processes)
+        if: matrix.node == '22'
+        run: bash scripts/smoke-e2e.sh
+        env:
+          HMAC_SECRET: ${{ secrets.HMAC_SECRET || 'testonly_hmac_secret_minimum_32_chars' }}
+
   plugin:
     name: Plugin bundle & manifests
     runs-on: ubuntu-latest
@@ -82,6 +91,13 @@ jobs:
           git diff --exit-code -- bin/agentroom \
             || (echo "::error::bin/agentroom is stale — run 'npm run bundle:cli' and commit" && exit 1)
 
+      - name: SKILL.md copies in sync with root
+        run: |
+          diff SKILL.md skills/agentroom/SKILL.md \
+            || (echo "::error::skills/agentroom/SKILL.md is stale — run 'npm run sync-skill' and commit" && exit 1)
+          diff SKILL.md .claude/skills/agentroom/SKILL.md \
+            || (echo "::error::.claude/skills/agentroom/SKILL.md is stale — run 'npm run sync-skill' and commit" && exit 1)
+
       - name: Smoke — bundle runs self-contained (no node_modules in cwd)
         run: |
           tmp="$(mktemp -d)"
@@ -111,3 +127,25 @@ jobs:
           done
           docker logs agentroom-ci
           docker stop agentroom-ci
+
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    # Informational: surfaces high/critical advisories without blocking merges
+    # (transient upstream advisories shouldn't gate unrelated changes).
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high

@@ -9687,12 +9687,8 @@ async function cmdListen(args) {
   });
 }
 
-// packages/cli/src/commands/serve.ts
+// packages/cli/src/handler.ts
 import { spawn } from "child_process";
-function getArg4(args, flag) {
-  const i = args.indexOf(flag);
-  return i >= 0 ? args[i + 1] : void 0;
-}
 function runHandler(cmd2, text, env, timeoutMs) {
   return new Promise((resolve) => {
     const child = spawn(cmd2, {
@@ -9729,6 +9725,12 @@ function runHandler(cmd2, text, env, timeoutMs) {
     child.stdin.write(text);
     child.stdin.end();
   });
+}
+
+// packages/cli/src/commands/serve.ts
+function getArg4(args, flag) {
+  const i = args.indexOf(flag);
+  return i >= 0 ? args[i + 1] : void 0;
 }
 async function cmdServe(args) {
   const server = getArg4(args, "--server");

@@ -9504,6 +9504,9 @@ async function cmdWhoami(args) {
   }, null, 2));
 }
 
+// packages/cli/src/commands/invite.ts
+init_dist();
+
 // packages/cli/src/exitcodes.ts
 var EXIT_ERROR = 1;
 var EXIT_USAGE = 2;
@@ -9522,6 +9525,9 @@ function requireArg(args, flag, name) {
     process.exit(EXIT_USAGE);
   }
   return v;
+}
+function resolveAcceptServer(explicit, blobServerUrl) {
+  return explicit ?? blobServerUrl ?? null;
 }
 async function cmdInviteCreate(args) {
   const server = requireArg(args, "--server", "wss://host/ws");
@@ -9549,11 +9555,20 @@ async function cmdInviteAccept(args) {
     console.error("Invalid invite URL format. Expected: agentroom://invite/<base64url>");
     process.exit(EXIT_USAGE);
   }
-  const server = requireArg(args, "--server", "wss://host/ws");
   const home = getArg(args, "--home");
   const jsonMode = args.includes("--json");
   let waitSec = parseInt(getArg(args, "--wait") ?? "10", 10);
   if (!Number.isFinite(waitSec) || waitSec <= 0) waitSec = 10;
+  const parsed = await parseInviteUrl(urlArg);
+  if (!parsed.ok) {
+    console.error(parsed.error);
+    process.exit(EXIT_USAGE);
+  }
+  const server = resolveAcceptServer(getArg(args, "--server"), parsed.signed.blob.server_url);
+  if (!server) {
+    console.error("No relay URL: invite has no server_url and --server <wss://host/ws> was not given");
+    process.exit(EXIT_USAGE);
+  }
   const client = new AgentroomClient();
   await client.connect({ serverUrl: server, home });
   const peerPk = await client.acceptInvite(urlArg);
@@ -9850,6 +9865,18 @@ async function cmdServe(args) {
   await client.connect({ serverUrl: server, home, autoReconnect: true });
   emit({ type: "serving", pk: client.publicKey() });
   human("Serving: auto-replying via handler. Ctrl+C to stop.");
+  if (args.includes("--invite")) {
+    try {
+      const { url } = await client.createInvite();
+      emit({ type: "invite", url });
+      human(`invite (share out-of-band):
+${url}`);
+    } catch (e) {
+      emit({ type: "invite_error", error: e instanceof Error ? e.message : String(e) });
+      human(`invite publish failed: ${e instanceof Error ? e.message : String(e)}`);
+      shutdown(EXIT_NETWORK);
+    }
+  }
   if (seed && seedTo) {
     try {
       await client.sendMessage(seedTo, seed);
@@ -10317,11 +10344,11 @@ Commands:
   init [--home <dir>] [--json]                                        Generate or show identity
   whoami [--home <dir>]                                               Print public keys as JSON
   invite create --server <wss://> [--home] [--json]                   Create and publish an invite
-  invite accept <url> --server <wss://> [--home] [--wait <s>] [--json]  Accept an invite
+  invite accept <url> [--server <wss://>] [--home] [--wait <s>] [--json]  Accept an invite (relay URL taken from the invite if --server omitted)
   send <peer_pk> <msg> --server <wss://> [--home] [--json]            Send a message
   listen --server <wss://> [--home] [--json] [--quiet]                Stream incoming messages
   serve --server <wss://> --on-message "<cmd>" [--home] [--json]      Auto-reply: pipe each message to <cmd>, send its stdout back
-        [--once] [--max-turns <n>] [--seed "<msg>" --to <pk>]        (building block for autonomous multi-turn chat)
+        [--invite] [--once] [--max-turns <n>] [--seed "<msg>" --to <pk>]  (--invite publishes+prints an invite on this connection)
   relay [--port <n>] [--tunnel] [--db <path>] [--json]                Run a relay; with --tunnel opens a public cloudflared URL
   peers [--home] [--json]                                             List active sessions
   version                                                             Print version

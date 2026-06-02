@@ -115,6 +115,22 @@ export async function cmdServe(args: string[]) {
   emit({ type: "serving", pk: client.publicKey() });
   human("Serving: auto-replying via handler. Ctrl+C to stop.");
 
+  // --invite: publish a fresh invite over THIS persistent connection (not a
+  // separate `invite create` process), so the host keeps a single live
+  // connection — no "replaced by new connection" churn. The invite embeds this
+  // server's URL, so the remote peer can accept with just the invite.
+  if (args.includes("--invite")) {
+    try {
+      const { url } = await client.createInvite();
+      emit({ type: "invite", url });
+      human(`invite (share out-of-band):\n${url}`);
+    } catch (e) {
+      emit({ type: "invite_error", error: e instanceof Error ? e.message : String(e) });
+      human(`invite publish failed: ${e instanceof Error ? e.message : String(e)}`);
+      shutdown(EXIT_NETWORK);
+    }
+  }
+
   if (seed && seedTo) {
     try {
       await client.sendMessage(seedTo, seed);

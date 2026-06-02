@@ -5,6 +5,15 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs: pushing a new commit to a PR (or a newer merge to
+# main) cancels the in-flight run for that same ref instead of stacking.
+# PR runs (refs/pull/*) and the post-merge main run (refs/heads/main) use
+# different groups, so the main safety-net run is never cancelled by a PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:

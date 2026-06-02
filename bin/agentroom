@@ -9536,34 +9536,23 @@ async function cmdInviteAccept(args) {
   const client = new AgentroomClient();
   await client.connect({ serverUrl: server, home });
   const peerPk = await client.acceptInvite(urlArg);
-  let timedOut = false;
-  await new Promise((resolve, reject) => {
-    const t = setTimeout(() => {
-      timedOut = true;
-      reject(new Error(`handshake timeout after ${waitSec}s`));
-    }, waitSec * 1e3);
+  const peerOnline = await new Promise((resolve) => {
+    const t = setTimeout(() => resolve(false), waitSec * 1e3);
+    t.unref?.();
     client.onPeerOnline((pk) => {
       if (pk === peerPk) {
         clearTimeout(t);
-        resolve();
+        resolve(true);
       }
     });
-  }).catch((err) => {
-    if (jsonMode) {
-      console.error(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
-    } else {
-      console.warn(`[agentroom] ${err instanceof Error ? err.message : err} \u2014 session saved, peer may connect later`);
-    }
-    if (timedOut) process.exitCode = EXIT_NETWORK;
   });
-  if (!timedOut) {
-    if (jsonMode) {
-      console.log(JSON.stringify({ ok: true, peer_pk: peerPk }));
-    } else {
-      console.log("\u2713 Session established with peer:");
-      console.log(peerPk);
-    }
-  } else if (!jsonMode) {
+  if (jsonMode) {
+    console.log(JSON.stringify({ ok: true, peer_pk: peerPk, peer_online: peerOnline }));
+  } else if (peerOnline) {
+    console.log("\u2713 Session established \u2014 peer online:");
+    console.log(peerPk);
+  } else {
+    console.log("\u2713 Session saved \u2014 peer offline; they'll sync when they next connect:");
     console.log(peerPk);
   }
   client.disconnect();

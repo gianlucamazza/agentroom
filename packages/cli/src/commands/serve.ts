@@ -1,6 +1,6 @@
 import { AgentroomClient } from "@agentroom/sdk";
 import { EXIT_NETWORK, EXIT_USAGE } from "../exitcodes.js";
-import { runHandler } from "../handler.js";
+import { wireServe } from "../serve-core.js";
 
 function getArg(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
@@ -38,10 +38,6 @@ export async function cmdServe(args: string[]) {
     process.exit(EXIT_USAGE);
   }
   const handlerTimeoutMs = handlerTimeoutSec === 0 ? 2_147_483_647 : handlerTimeoutSec * 1000;
-  // Optional opening message sent right after connect, on the same connection,
-  // so a bot can *start* a conversation without a second process (a separate
-  // `send` would open a duplicate connection for the same identity, and the
-  // server closes the older one — see server ws HELLO handling).
   const seed = getArg(args, "--seed");
   const seedTo = getArg(args, "--to");
   if (seed && !seedTo) { console.error("--seed requires --to <peer_pk>"); process.exit(EXIT_USAGE); }
@@ -53,61 +49,10 @@ export async function cmdServe(args: string[]) {
   };
   const human = (s: string) => { if (!jsonMode) console.error(`[${new Date().toISOString()}] ${s}`); };
 
-  let replies = 0;
-  // Serialize handler runs so concurrent inbound messages don't interleave
-  // ratchet state on the same session.
-  let chain: Promise<void> = Promise.resolve();
+  const exit = (code = 0) => { client.disconnect(); process.exit(code); };
 
-  function shutdown(code = 0) {
-    client.disconnect();
-    process.exit(code);
-  }
-
-  client.onMessage((from, text) => {
-    chain = chain.then(async () => {
-      emit({ type: "received", from, text });
-      human(`recv ${from.slice(0, 12)}…  ${text}`);
-
-      const { reply, code, stderr } = await runHandler(onMessage, text, { from, pk: client.publicKey() }, handlerTimeoutMs);
-      if (code !== 0) {
-        emit({ type: "handler_error", from, code, stderr: stderr.slice(0, 500) });
-        human(`handler exited ${code} — no reply sent. ${stderr.slice(0, 200)}`);
-        return;
-      }
-      if (!reply) {
-        emit({ type: "no_reply", from });
-        human(`handler produced empty reply — nothing sent`);
-        return;
-      }
-
-      try {
-        await client.sendMessage(from, reply);
-        replies++;
-        emit({ type: "replied", to: from, text: reply, turn: replies });
-        human(`sent ${from.slice(0, 12)}…  ${reply}`);
-      } catch (e) {
-        emit({ type: "send_error", to: from, error: e instanceof Error ? e.message : String(e) });
-        human(`send failed: ${e instanceof Error ? e.message : String(e)}`);
-        return;
-      }
-
-      if (once || (maxTurns > 0 && replies >= maxTurns)) {
-        emit({ type: "done", replies });
-        human(`reached ${once ? "--once" : `--max-turns ${maxTurns}`} — exiting`);
-        shutdown(0);
-      }
-    }).catch((e) => {
-      emit({ type: "error", error: e instanceof Error ? e.message : String(e) });
-    });
-  });
-
-  client.onPeerOnline((pk) => emit({ type: "peer_online", pk }));
-  client.onDisconnect((reason) => { emit({ type: "disconnect", reason }); human(`disconnected (${reason}) — reconnecting…`); });
-  client.onReconnect(() => { emit({ type: "reconnect" }); human("reconnected"); });
-  client.onReconnectFailed((reason) => {
-    emit({ type: "reconnect_failed", reason });
-    human(`reconnect failed: ${reason}`);
-    shutdown(EXIT_NETWORK);
+  const { sendSeed } = wireServe(client, {
+    onMessage, handlerTimeoutMs, once, maxTurns, seed, seedTo, emit, human, exit,
   });
 
   await client.connect({ serverUrl: server, home, autoReconnect: true });
@@ -127,25 +72,14 @@ export async function cmdServe(args: string[]) {
     } catch (e) {
       emit({ type: "invite_error", error: e instanceof Error ? e.message : String(e) });
       human(`invite publish failed: ${e instanceof Error ? e.message : String(e)}`);
-      shutdown(EXIT_NETWORK);
+      exit(EXIT_NETWORK);
     }
   }
 
-  if (seed && seedTo) {
-    try {
-      await client.sendMessage(seedTo, seed);
-      replies++;
-      emit({ type: "replied", to: seedTo, text: seed, turn: replies, seed: true });
-      human(`seed ${seedTo.slice(0, 12)}…  ${seed}`);
-    } catch (e) {
-      emit({ type: "send_error", to: seedTo, error: e instanceof Error ? e.message : String(e) });
-      human(`seed send failed: ${e instanceof Error ? e.message : String(e)}`);
-      shutdown(EXIT_NETWORK);
-    }
-  }
+  await sendSeed();
 
-  process.on("SIGINT", () => shutdown(0));
-  process.on("SIGTERM", () => shutdown(0));
+  process.on("SIGINT", () => exit(0));
+  process.on("SIGTERM", () => exit(0));
 
   await new Promise(() => {});
 }

@@ -4146,8 +4146,8 @@ var init_parseUtil = __esm({
     init_errors();
     init_en();
     makeIssue = (params) => {
-      const { data, path: path6, errorMaps, issueData } = params;
-      const fullPath = [...path6, ...issueData.path || []];
+      const { data, path: path7, errorMaps, issueData } = params;
+      const fullPath = [...path7, ...issueData.path || []];
       const fullIssue = {
         ...issueData,
         path: fullPath
@@ -4455,11 +4455,11 @@ var init_types = __esm({
     init_parseUtil();
     init_util();
     ParseInputLazyPath = class {
-      constructor(parent, value, path6, key) {
+      constructor(parent, value, path7, key) {
         this._cachedPath = [];
         this.parent = parent;
         this.data = value;
-        this._path = path6;
+        this._path = path7;
         this._key = key;
       }
       get path() {
@@ -8047,10 +8047,10 @@ var init_dist = __esm({
 
 // packages/server/dist/chunk-DROMYGQS.js
 import { createServer } from "http";
-import { readFileSync as readFileSync5, existsSync as existsSync7 } from "fs";
+import { readFileSync as readFileSync6, existsSync as existsSync8 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
 import { DatabaseSync } from "node:sqlite";
-import path5 from "path";
+import path6 from "path";
 import fs from "fs";
 import { createHmac, randomBytes as randomBytes3, timingSafeEqual } from "crypto";
 function runAuthMaintenance(now = Date.now()) {
@@ -8459,8 +8459,8 @@ async function startServer() {
   for (const envPath of [".env", "../../.env", "../../../.env"].map(
     (p) => new URL(p, import.meta.url).pathname
   )) {
-    if (existsSync7(envPath)) {
-      for (const line of readFileSync5(envPath, "utf8").split("\n")) {
+    if (existsSync8(envPath)) {
+      for (const line of readFileSync6(envPath, "utf8").split("\n")) {
         const t = line.trim();
         if (!t || t.startsWith("#")) continue;
         const eq = t.indexOf("=");
@@ -8525,9 +8525,9 @@ var init_chunk_DROMYGQS = __esm({
     "use strict";
     init_wrapper();
     init_dist();
-    DB_PATH = process.env["AGENTROOM_DB"] ?? path5.join(process.cwd(), "data", "agentroom.db");
+    DB_PATH = process.env["AGENTROOM_DB"] ?? path6.join(process.cwd(), "data", "agentroom.db");
     if (DB_PATH !== ":memory:") {
-      fs.mkdirSync(path5.dirname(DB_PATH), { recursive: true });
+      fs.mkdirSync(path6.dirname(DB_PATH), { recursive: true });
     }
     db = new DatabaseSync(DB_PATH);
     db.exec("PRAGMA journal_mode = WAL;");
@@ -9765,6 +9765,75 @@ function runHandler(cmd2, text, env, timeoutMs) {
   });
 }
 
+// packages/cli/src/serve-core.ts
+function wireServe(client, opts) {
+  const { onMessage, handlerTimeoutMs, once, maxTurns, seed, seedTo, emit, human, exit } = opts;
+  let replies = 0;
+  let chain = Promise.resolve();
+  client.onMessage((from, text) => {
+    chain = chain.then(async () => {
+      emit({ type: "received", from, text });
+      human(`recv ${from.slice(0, 12)}\u2026  ${text}`);
+      const { reply, code, stderr } = await runHandler(onMessage, text, { from, pk: client.publicKey() }, handlerTimeoutMs);
+      if (code !== 0) {
+        emit({ type: "handler_error", from, code, stderr: stderr.slice(0, 500) });
+        human(`handler exited ${code} \u2014 no reply sent. ${stderr.slice(0, 200)}`);
+        return;
+      }
+      if (!reply) {
+        emit({ type: "no_reply", from });
+        human(`handler produced empty reply \u2014 nothing sent`);
+        return;
+      }
+      try {
+        await client.sendMessage(from, reply);
+        replies++;
+        emit({ type: "replied", to: from, text: reply, turn: replies });
+        human(`sent ${from.slice(0, 12)}\u2026  ${reply}`);
+      } catch (e) {
+        emit({ type: "send_error", to: from, error: e instanceof Error ? e.message : String(e) });
+        human(`send failed: ${e instanceof Error ? e.message : String(e)}`);
+        return;
+      }
+      if (once || maxTurns > 0 && replies >= maxTurns) {
+        emit({ type: "done", replies });
+        human(`reached ${once ? "--once" : `--max-turns ${maxTurns}`} \u2014 exiting`);
+        exit(0);
+      }
+    }).catch((e) => {
+      emit({ type: "error", error: e instanceof Error ? e.message : String(e) });
+    });
+  });
+  client.onPeerOnline((pk) => emit({ type: "peer_online", pk }));
+  client.onDisconnect((reason) => {
+    emit({ type: "disconnect", reason });
+    human(`disconnected (${reason}) \u2014 reconnecting\u2026`);
+  });
+  client.onReconnect(() => {
+    emit({ type: "reconnect" });
+    human("reconnected");
+  });
+  client.onReconnectFailed((reason) => {
+    emit({ type: "reconnect_failed", reason });
+    human(`reconnect failed: ${reason}`);
+    exit(EXIT_NETWORK);
+  });
+  async function sendSeed() {
+    if (!seed || !seedTo) return;
+    try {
+      await client.sendMessage(seedTo, seed);
+      replies++;
+      emit({ type: "replied", to: seedTo, text: seed, turn: replies, seed: true });
+      human(`seed ${seedTo.slice(0, 12)}\u2026  ${seed}`);
+    } catch (e) {
+      emit({ type: "send_error", to: seedTo, error: e instanceof Error ? e.message : String(e) });
+      human(`seed send failed: ${e instanceof Error ? e.message : String(e)}`);
+      exit(EXIT_NETWORK);
+    }
+  }
+  return { sendSeed };
+}
+
 // packages/cli/src/commands/serve.ts
 function getArg4(args, flag) {
   const i = args.indexOf(flag);
@@ -9808,59 +9877,20 @@ async function cmdServe(args) {
   const human = (s) => {
     if (!jsonMode) console.error(`[${(/* @__PURE__ */ new Date()).toISOString()}] ${s}`);
   };
-  let replies = 0;
-  let chain = Promise.resolve();
-  function shutdown(code = 0) {
+  const exit = (code = 0) => {
     client.disconnect();
     process.exit(code);
-  }
-  client.onMessage((from, text) => {
-    chain = chain.then(async () => {
-      emit({ type: "received", from, text });
-      human(`recv ${from.slice(0, 12)}\u2026  ${text}`);
-      const { reply, code, stderr } = await runHandler(onMessage, text, { from, pk: client.publicKey() }, handlerTimeoutMs);
-      if (code !== 0) {
-        emit({ type: "handler_error", from, code, stderr: stderr.slice(0, 500) });
-        human(`handler exited ${code} \u2014 no reply sent. ${stderr.slice(0, 200)}`);
-        return;
-      }
-      if (!reply) {
-        emit({ type: "no_reply", from });
-        human(`handler produced empty reply \u2014 nothing sent`);
-        return;
-      }
-      try {
-        await client.sendMessage(from, reply);
-        replies++;
-        emit({ type: "replied", to: from, text: reply, turn: replies });
-        human(`sent ${from.slice(0, 12)}\u2026  ${reply}`);
-      } catch (e) {
-        emit({ type: "send_error", to: from, error: e instanceof Error ? e.message : String(e) });
-        human(`send failed: ${e instanceof Error ? e.message : String(e)}`);
-        return;
-      }
-      if (once || maxTurns > 0 && replies >= maxTurns) {
-        emit({ type: "done", replies });
-        human(`reached ${once ? "--once" : `--max-turns ${maxTurns}`} \u2014 exiting`);
-        shutdown(0);
-      }
-    }).catch((e) => {
-      emit({ type: "error", error: e instanceof Error ? e.message : String(e) });
-    });
-  });
-  client.onPeerOnline((pk) => emit({ type: "peer_online", pk }));
-  client.onDisconnect((reason) => {
-    emit({ type: "disconnect", reason });
-    human(`disconnected (${reason}) \u2014 reconnecting\u2026`);
-  });
-  client.onReconnect(() => {
-    emit({ type: "reconnect" });
-    human("reconnected");
-  });
-  client.onReconnectFailed((reason) => {
-    emit({ type: "reconnect_failed", reason });
-    human(`reconnect failed: ${reason}`);
-    shutdown(EXIT_NETWORK);
+  };
+  const { sendSeed } = wireServe(client, {
+    onMessage,
+    handlerTimeoutMs,
+    once,
+    maxTurns,
+    seed,
+    seedTo,
+    emit,
+    human,
+    exit
   });
   await client.connect({ serverUrl: server, home, autoReconnect: true });
   emit({ type: "serving", pk: client.publicKey() });
@@ -9874,28 +9904,17 @@ ${url}`);
     } catch (e) {
       emit({ type: "invite_error", error: e instanceof Error ? e.message : String(e) });
       human(`invite publish failed: ${e instanceof Error ? e.message : String(e)}`);
-      shutdown(EXIT_NETWORK);
+      exit(EXIT_NETWORK);
     }
   }
-  if (seed && seedTo) {
-    try {
-      await client.sendMessage(seedTo, seed);
-      replies++;
-      emit({ type: "replied", to: seedTo, text: seed, turn: replies, seed: true });
-      human(`seed ${seedTo.slice(0, 12)}\u2026  ${seed}`);
-    } catch (e) {
-      emit({ type: "send_error", to: seedTo, error: e instanceof Error ? e.message : String(e) });
-      human(`seed send failed: ${e instanceof Error ? e.message : String(e)}`);
-      shutdown(EXIT_NETWORK);
-    }
-  }
-  process.on("SIGINT", () => shutdown(0));
-  process.on("SIGTERM", () => shutdown(0));
+  await sendSeed();
+  process.on("SIGINT", () => exit(0));
+  process.on("SIGTERM", () => exit(0));
   await new Promise(() => {
   });
 }
 
-// packages/cli/src/commands/relay.ts
+// packages/cli/src/relay-core.ts
 import { spawn as spawn2, fork } from "child_process";
 import { randomBytes } from "crypto";
 
@@ -10046,11 +10065,7 @@ function detectCloudflared(home) {
   return null;
 }
 
-// packages/cli/src/commands/relay.ts
-function getArg5(args, flag) {
-  const i = args.indexOf(flag);
-  return i >= 0 ? args[i + 1] : void 0;
-}
+// packages/cli/src/relay-core.ts
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function flushDns() {
   return new Promise((resolve) => {
@@ -10059,33 +10074,21 @@ function flushDns() {
     p.on("close", () => resolve());
   });
 }
-async function cmdRelay(args) {
-  const port = Number(getArg5(args, "--port") ?? process.env["PORT"] ?? "8787");
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    console.error("--port must be a valid TCP port");
-    process.exit(EXIT_USAGE);
-  }
-  const useTunnel = args.includes("--tunnel");
-  const jsonMode = args.includes("--json");
-  const db2 = getArg5(args, "--db");
-  let hmac = process.env["HMAC_SECRET"] ?? getArg5(args, "--hmac");
+async function startRelay(opts) {
+  const { port, db: db2, useTunnel, emit, human } = opts;
+  let hmac = opts.hmac ?? process.env["HMAC_SECRET"];
   let hmacGenerated = false;
   if (!hmac) {
     hmac = randomBytes(24).toString("hex");
     hmacGenerated = true;
   }
-  const emit = (obj) => {
-    if (jsonMode) process.stdout.write(JSON.stringify({ ...obj, ts: Date.now() }) + "\n");
-  };
-  const human = (s) => {
-    if (!jsonMode) console.error(`[relay] ${s}`);
-  };
   let cf;
   let srv;
   let shuttingDown = false;
   const shutdown = (code = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
+    opts.onShutdown?.();
     const pending = /* @__PURE__ */ new Set();
     for (const child of [srv, cf]) {
       if (child && child.exitCode === null && !child.killed) {
@@ -10140,7 +10143,7 @@ async function cmdRelay(args) {
   if (!healthy) {
     human("server did not become healthy in time");
     shutdown(EXIT_NETWORK);
-    return;
+    await sleep(6e4);
   }
   if (hmacGenerated) {
     emit({ type: "hmac_generated", hmac_secret: hmac });
@@ -10148,6 +10151,14 @@ async function cmdRelay(args) {
   }
   emit({ type: "listening", port, local_url: `ws://localhost:${port}/ws` });
   human(`relay listening on ws://localhost:${port}/ws  (health: ${base2}/health)`);
+  const handle = {
+    port,
+    base: base2,
+    localUrl: `ws://localhost:${port}/ws`,
+    hmac,
+    hmacGenerated,
+    shutdown
+  };
   if (useTunnel) {
     human("opening cloudflared quick tunnel (no account/domain needed)\u2026");
     let cfBin;
@@ -10159,7 +10170,7 @@ async function cmdRelay(args) {
       emit({ type: "tunnel_error", error: msg });
       human(msg);
       shutdown(EXIT_ERROR);
-      return;
+      await sleep(6e4);
     }
     cf = spawn2(cfBin, ["tunnel", "--url", base2, "--no-autoupdate"], {
       stdio: ["ignore", "pipe", "pipe"]
@@ -10187,7 +10198,7 @@ async function cmdRelay(args) {
     if (!url) {
       human("cloudflared did not produce a tunnel URL in time");
       shutdown(EXIT_NETWORK);
-      return;
+      await sleep(6e4);
     }
     const wss = url.replace(/^https:/, "wss:") + "/ws";
     const httpsHost = url;
@@ -10206,29 +10217,301 @@ async function cmdRelay(args) {
     }
     emit({ type: "tunnel", url: wss, https: httpsHost, reachable });
     human(reachable ? `public relay ready:  ${wss}` : `tunnel URL (not yet confirmed reachable, give DNS a few s):  ${wss}`);
-    human(`share it:  agentroom invite create --server ${wss}`);
+    handle.tunnel = { wss, https: httpsHost, reachable };
   }
-  process.on("SIGINT", () => shutdown(0));
-  process.on("SIGTERM", () => shutdown(0));
+  return handle;
+}
+
+// packages/cli/src/pidfile.ts
+import { mkdirSync as mkdirSync3, writeFileSync as writeFileSync3, readFileSync as readFileSync3, readdirSync as readdirSync2, unlinkSync as unlinkSync2, chmodSync as chmodSync3, existsSync as existsSync5 } from "fs";
+import path3 from "path";
+function roomsDir(home) {
+  return path3.join(configBase(home), "rooms");
+}
+function pidfilePath(port, home) {
+  return path3.join(roomsDir(home), `${port}.json`);
+}
+function isAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return e.code === "EPERM";
+  }
+}
+function writePidfile(port, meta, home) {
+  const dir = roomsDir(home);
+  mkdirSync3(dir, { recursive: true });
+  const file = pidfilePath(port, home);
+  writeFileSync3(file, JSON.stringify(meta), { encoding: "utf8" });
+  chmodSync3(file, 384);
+}
+function removePidfile(port, home) {
+  try {
+    unlinkSync2(pidfilePath(port, home));
+  } catch {
+  }
+}
+function readPidfiles(home, prune = false) {
+  const dir = roomsDir(home);
+  if (!existsSync5(dir)) return [];
+  const out = [];
+  for (const file of readdirSync2(dir)) {
+    if (!file.endsWith(".json")) continue;
+    const port = parseInt(file.slice(0, -5), 10);
+    if (!Number.isInteger(port)) continue;
+    let meta;
+    try {
+      meta = JSON.parse(readFileSync3(path3.join(dir, file), "utf8"));
+    } catch {
+      continue;
+    }
+    const alive = isAlive(meta.pid);
+    if (!alive && prune) {
+      removePidfile(port, home);
+      continue;
+    }
+    out.push({ ...meta, port, alive });
+  }
+  return out.sort((a, b) => a.port - b.port);
+}
+
+// packages/cli/src/commands/relay.ts
+function getArg5(args, flag) {
+  const i = args.indexOf(flag);
+  return i >= 0 ? args[i + 1] : void 0;
+}
+async function cmdRelay(args) {
+  const port = Number(getArg5(args, "--port") ?? process.env["PORT"] ?? "8787");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error("--port must be a valid TCP port");
+    process.exit(EXIT_USAGE);
+  }
+  const useTunnel = args.includes("--tunnel");
+  const jsonMode = args.includes("--json");
+  const db2 = getArg5(args, "--db");
+  const hmac = process.env["HMAC_SECRET"] ?? getArg5(args, "--hmac");
+  const home = getArg5(args, "--home");
+  const emit = (obj) => {
+    if (jsonMode) process.stdout.write(JSON.stringify({ ...obj, ts: Date.now() }) + "\n");
+  };
+  const human = (s) => {
+    if (!jsonMode) console.error(`[relay] ${s}`);
+  };
+  const relay = await startRelay({
+    port,
+    db: db2,
+    hmac,
+    useTunnel,
+    emit,
+    human,
+    onShutdown: () => removePidfile(port, home)
+  });
+  writePidfile(port, {
+    pid: process.pid,
+    kind: "relay",
+    tunnel_url: relay.tunnel?.wss,
+    local_url: relay.localUrl,
+    started_at: Date.now()
+  }, home);
+  if (relay.tunnel) human(`share it:  agentroom invite create --server ${relay.tunnel.wss}`);
+  process.on("SIGINT", () => relay.shutdown(0));
+  process.on("SIGTERM", () => relay.shutdown(0));
   await new Promise(() => {
   });
 }
 
-// packages/cli/src/commands/peers.ts
-import { existsSync as existsSync5, readdirSync as readdirSync2, readFileSync as readFileSync3 } from "fs";
-import path3 from "path";
+// packages/cli/src/commands/room.ts
 function getArg6(args, flag) {
   const i = args.indexOf(flag);
   return i >= 0 ? args[i + 1] : void 0;
 }
-async function cmdPeers(args) {
+async function cmdRoom(args) {
+  const sub2 = args[0];
+  const rest2 = args.slice(1);
+  switch (sub2) {
+    case "open":
+      return cmdRoomOpen(rest2);
+    case "stop":
+      return cmdRoomStop(rest2);
+    case "status":
+      return cmdRoomStatus(rest2);
+    default:
+      console.error("Usage: agentroom room <open|stop|status>");
+      process.exit(EXIT_USAGE);
+  }
+}
+async function cmdRoomOpen(args) {
+  const onMessage = getArg6(args, "--on-message");
+  if (!onMessage) {
+    console.error('--on-message "<command>" is required (message piped to its stdin, stdout is the reply)');
+    process.exit(EXIT_USAGE);
+  }
+  const port = Number(getArg6(args, "--port") ?? process.env["PORT"] ?? "8787");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error("--port must be a valid TCP port");
+    process.exit(EXIT_USAGE);
+  }
+  const db2 = getArg6(args, "--db");
+  const hmac = process.env["HMAC_SECRET"] ?? getArg6(args, "--hmac");
   const home = getArg6(args, "--home");
+  const jsonMode = args.includes("--json");
+  const useTunnel = !args.includes("--no-tunnel");
+  const once = args.includes("--once");
+  const maxTurns = Number(getArg6(args, "--max-turns") ?? "0");
+  if (!Number.isInteger(maxTurns) || maxTurns < 0) {
+    console.error("--max-turns must be a non-negative integer (0 = unlimited)");
+    process.exit(EXIT_USAGE);
+  }
+  const handlerTimeoutSec = Number(getArg6(args, "--handler-timeout") ?? "120");
+  if (!Number.isFinite(handlerTimeoutSec) || handlerTimeoutSec < 0) {
+    console.error("--handler-timeout must be a non-negative number of seconds (0 = no timeout)");
+    process.exit(EXIT_USAGE);
+  }
+  const handlerTimeoutMs = handlerTimeoutSec === 0 ? 2147483647 : handlerTimeoutSec * 1e3;
+  const seed = getArg6(args, "--seed");
+  const seedTo = getArg6(args, "--to");
+  if (seed && !seedTo) {
+    console.error("--seed requires --to <peer_pk>");
+    process.exit(EXIT_USAGE);
+  }
+  const emit = (obj) => {
+    if (jsonMode) process.stdout.write(JSON.stringify({ ...obj, ts: Date.now() }) + "\n");
+  };
+  const human = (s) => {
+    if (!jsonMode) console.error(`[room] ${s}`);
+  };
+  let client;
+  const relay = await startRelay({
+    port,
+    db: db2,
+    hmac,
+    useTunnel,
+    emit,
+    human,
+    onShutdown: () => {
+      client?.disconnect();
+      removePidfile(port, home);
+    }
+  });
+  const inviteServerUrl = relay.tunnel?.wss ?? relay.localUrl;
+  client = new AgentroomClient();
+  const exit = (code = 0) => relay.shutdown(code);
+  const { sendSeed } = wireServe(client, {
+    onMessage,
+    handlerTimeoutMs,
+    once,
+    maxTurns,
+    seed,
+    seedTo,
+    emit,
+    human,
+    exit
+  });
+  await client.connect({ serverUrl: relay.localUrl, home, autoReconnect: true });
+  emit({ type: "serving", pk: client.publicKey() });
+  human("Serving: auto-replying via handler. Ctrl+C to stop.");
+  try {
+    const { url } = await client.createInvite(inviteServerUrl);
+    emit({ type: "invite", url });
+    human(`invite (share out-of-band):
+${url}`);
+  } catch (e) {
+    emit({ type: "invite_error", error: e instanceof Error ? e.message : String(e) });
+    human(`invite publish failed: ${e instanceof Error ? e.message : String(e)}`);
+    exit(EXIT_NETWORK);
+  }
+  writePidfile(port, {
+    pid: process.pid,
+    kind: "room",
+    tunnel_url: relay.tunnel?.wss,
+    local_url: relay.localUrl,
+    started_at: Date.now()
+  }, home);
+  await sendSeed();
+  process.on("SIGINT", () => relay.shutdown(0));
+  process.on("SIGTERM", () => relay.shutdown(0));
+  await new Promise(() => {
+  });
+}
+function fmtUptime(ms) {
+  const s = Math.max(0, Math.floor(ms / 1e3));
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m${s % 60}s`;
+  return `${Math.floor(s / 3600)}h${Math.floor(s % 3600 / 60)}m`;
+}
+async function cmdRoomStatus(args) {
+  const home = getArg6(args, "--home");
+  const jsonMode = args.includes("--json");
+  const rooms = readPidfiles(home, true);
+  if (jsonMode) {
+    console.log(JSON.stringify({ rooms: rooms.map((r) => ({ ...r, uptime_s: Math.floor((Date.now() - r.started_at) / 1e3) })) }));
+    return;
+  }
+  if (rooms.length === 0) {
+    console.log("No rooms running.");
+    return;
+  }
+  for (const r of rooms) {
+    console.log(`  port ${r.port}  pid ${r.pid}  ${r.kind.padEnd(5)}  up ${fmtUptime(Date.now() - r.started_at)}`);
+    console.log(`    ${r.tunnel_url ?? r.local_url}`);
+  }
+}
+async function cmdRoomStop(args) {
+  const home = getArg6(args, "--home");
+  const jsonMode = args.includes("--json");
+  const all = args.includes("--all");
+  const portArg = getArg6(args, "--port");
+  const rooms = readPidfiles(home, true).filter((r) => r.alive);
+  let targets;
+  if (all) {
+    targets = rooms;
+  } else if (portArg) {
+    const port = Number(portArg);
+    targets = rooms.filter((r) => r.port === port);
+    if (targets.length === 0) {
+      console.error(`No running room on port ${port}`);
+      process.exit(EXIT_USAGE);
+    }
+  } else if (rooms.length === 1) {
+    targets = rooms;
+  } else if (rooms.length === 0) {
+    if (jsonMode) console.log(JSON.stringify({ stopped: [] }));
+    else console.log("No rooms running.");
+    return;
+  } else {
+    console.error(`${rooms.length} rooms running \u2014 pass --port <n> or --all`);
+    process.exit(EXIT_USAGE);
+  }
+  const stopped = [];
+  for (const r of targets) {
+    try {
+      process.kill(r.pid, "SIGTERM");
+    } catch {
+    }
+    removePidfile(r.port, home);
+    stopped.push(r.port);
+  }
+  if (jsonMode) console.log(JSON.stringify({ stopped }));
+  else console.log(`Stopped room(s) on port: ${stopped.join(", ")}`);
+}
+
+// packages/cli/src/commands/peers.ts
+import { existsSync as existsSync6, readdirSync as readdirSync3, readFileSync as readFileSync4 } from "fs";
+import path4 from "path";
+function getArg7(args, flag) {
+  const i = args.indexOf(flag);
+  return i >= 0 ? args[i + 1] : void 0;
+}
+async function cmdPeers(args) {
+  const home = getArg7(args, "--home");
   const dir = sessionsDir(home);
-  if (!existsSync5(dir)) {
+  if (!existsSync6(dir)) {
     console.log("No sessions found. Complete an invite handshake first.");
     return;
   }
-  const files = readdirSync2(dir).filter((f) => f.endsWith(".json"));
+  const files = readdirSync3(dir).filter((f) => f.endsWith(".json"));
   if (files.length === 0) {
     console.log("No sessions found. Complete an invite handshake first.");
     return;
@@ -10237,7 +10520,7 @@ async function cmdPeers(args) {
   const rows = [];
   for (const file of files) {
     try {
-      const raw = JSON.parse(readFileSync3(path3.join(dir, file), "utf8"));
+      const raw = JSON.parse(readFileSync4(path4.join(dir, file), "utf8"));
       rows.push({
         pk: raw.peerPk ?? file.replace(".json", ""),
         lastUsedAt: raw.lastUsedAt ?? 0,
@@ -10261,8 +10544,8 @@ async function cmdPeers(args) {
 
 // packages/cli/src/commands/setup.ts
 import { randomBytes as randomBytes2 } from "crypto";
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync3, existsSync as existsSync6, unlinkSync as unlinkSync2, rmSync as rmSync2, chmodSync as chmodSync3 } from "fs";
-import path4 from "path";
+import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync4, existsSync as existsSync7, unlinkSync as unlinkSync3, rmSync as rmSync2, chmodSync as chmodSync4 } from "fs";
+import path5 from "path";
 init_dist();
 async function cmdSetup(args) {
   const jsonMode = args.includes("--json");
@@ -10279,36 +10562,36 @@ async function cmdSetup(args) {
     process.exit(EXIT_USAGE);
   }
   const steps = [];
-  const envFile = path4.resolve(cwd, ".env");
-  const envExample = path4.resolve(cwd, ".env.example");
-  if (!existsSync6(envFile)) {
-    if (!existsSync6(envExample)) {
+  const envFile = path5.resolve(cwd, ".env");
+  const envExample = path5.resolve(cwd, ".env.example");
+  if (!existsSync7(envFile)) {
+    if (!existsSync7(envExample)) {
       const msg = `.env.example not found at ${cwd}. Run this command from the agentroom repo root.`;
       if (jsonMode) console.log(JSON.stringify({ ready: false, error: msg }));
       else console.error(`error: ${msg}`);
       process.exit(EXIT_USAGE);
     }
     const secret2 = randomBytes2(32).toString("hex");
-    const content = readFileSync4(envExample, "utf8").replace(
+    const content = readFileSync5(envExample, "utf8").replace(
       /^HMAC_SECRET=.*$/m,
       `HMAC_SECRET=${secret2}`
     );
-    writeFileSync3(envFile, content, { encoding: "utf8" });
-    chmodSync3(envFile, 384);
+    writeFileSync4(envFile, content, { encoding: "utf8" });
+    chmodSync4(envFile, 384);
     steps.push({ step: "env", status: "created" });
   } else {
     steps.push({ step: "env", status: "skipped" });
   }
-  const dataDir = path4.resolve(cwd, "data");
-  mkdirSync3(dataDir, { recursive: true });
+  const dataDir = path5.resolve(cwd, "data");
+  mkdirSync4(dataDir, { recursive: true });
   steps.push({ step: "data/", status: "ok" });
   const idPath = identityPath(home);
-  if (forceMode && existsSync6(idPath)) {
+  if (forceMode && existsSync7(idPath)) {
     if (!jsonMode) console.warn(`warning: --force: removing existing identity at ${idPath}`);
-    unlinkSync2(idPath);
+    unlinkSync3(idPath);
     rmSync2(sessionsDir(home), { recursive: true, force: true });
   }
-  const isNew = !existsSync6(idPath);
+  const isNew = !existsSync7(idPath);
   const identity = await loadOrCreateIdentity(home);
   const pk = toBase64(identity.ed25519_pk);
   const x25519Pk = toBase64(identity.x25519_pk);
@@ -10340,7 +10623,7 @@ var USAGE = `
 agentroom ${version} \u2014 agent-to-agent encrypted chat
 
 Commands:
-  setup [--cwd <dir>] [--home <dir>] [--force] [--json]              First-run bootstrap (reads AGENTROOM_HOME env)
+  setup [--cwd <dir>] [--home <dir>] [--force] [--json]              First-run bootstrap (--force rotates the identity)
   init [--home <dir>] [--json]                                        Generate or show identity
   whoami [--home <dir>]                                               Print public keys as JSON
   invite create --server <wss://> [--home] [--json]                   Create and publish an invite
@@ -10350,6 +10633,10 @@ Commands:
   serve --server <wss://> --on-message "<cmd>" [--home] [--json]      Auto-reply: pipe each message to <cmd>, send its stdout back
         [--invite] [--once] [--max-turns <n>] [--seed "<msg>" --to <pk>]  (--invite publishes+prints an invite on this connection)
   relay [--port <n>] [--tunnel] [--db <path>] [--json]                Run a relay; with --tunnel opens a public cloudflared URL
+  room open --on-message "<cmd>" [--no-tunnel] [--port <n>] [--json]  Open a tunneled room in one process: relay + tunnel + invite + auto-reply
+        [--home] [--once] [--max-turns <n>] [--seed "<msg>" --to <pk>]  (alias: agentroom host)
+  room status [--home] [--json]                                       List running rooms (pid, tunnel URL, uptime)
+  room stop [--port <n>] [--all] [--home] [--json]                    Stop a running room by pid (no manual kill)
   peers [--home] [--json]                                             List active sessions
   version                                                             Print version
 `.trim();
@@ -10389,6 +10676,11 @@ async function main() {
       return cmdServe([sub, ...rest].filter((a) => Boolean(a)));
     case "relay":
       return cmdRelay([sub, ...rest].filter((a) => Boolean(a)));
+    case "room":
+      return cmdRoom([sub, ...rest].filter((a) => Boolean(a)));
+    case "host":
+      return cmdRoomOpen([sub, ...rest].filter((a) => Boolean(a)));
+    // alias for `room open`
     case "peers":
       return cmdPeers([sub, ...rest].filter((a) => Boolean(a)));
     case "invite":

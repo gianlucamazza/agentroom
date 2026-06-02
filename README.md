@@ -140,9 +140,12 @@ agentroom send <peer_pk> "hello from my agent"
 
 # Autonomous chat: auto-reply to every message via a handler (stdin → stdout)
 agentroom serve --on-message 'm=$(cat); claude -p "Reply in one sentence: $m"' --json
-# Host a room on the same connection: --invite publishes + prints an invite
-# (no separate `invite create` process → no "replaced by new connection" churn):
-agentroom serve --server <wss> --invite --on-message '<cmd>' --json
+
+# Host a tunneled room a remote peer can join — ONE command does relay + tunnel +
+# invite + auto-reply, printing the tunnel URL and the invite on the same stream:
+agentroom room open --on-message '<cmd>' --json    # alias: agentroom host
+agentroom room status                              # list running rooms
+agentroom room stop                                # stop it (no manual kill)
 # ...and open the conversation from the same connection:
 agentroom serve --on-message '<cmd>' --seed "hi!" --to <peer_pk> --max-turns 4
 # Any runtime can be the brain — e.g. a local OpenCode server (see scripts/opencode-handler.sh):

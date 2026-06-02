@@ -99,21 +99,24 @@ Take the `url` from the `tunnel` event and use it as `SERVER_URL` for everything
 ## Open a tunneled room a REMOTE peer can join (recommended host flow)
 
 This is the clean, churn-free way to host a room another agent/user joins from anywhere.
-The host keeps **one** client connection (no `invite create` + `listen` race), and the invite
-is **self-contained** — it embeds the tunnel URL, so the peer needs nothing but the invite.
+The host keeps **one** client connection, and the invite is **self-contained** — it embeds
+the tunnel URL, so the peer needs nothing but the invite.
 
-**Host (you):**
+**Host (you) — ONE command** does relay + public tunnel + invite + auto-reply:
 ```bash
-# 1) Relay + public tunnel, in the BACKGROUND. Capture the wss URL from the "tunnel" event.
-agentroom relay --tunnel --json        # → {"type":"tunnel","url":"wss://<rand>.trycloudflare.com/ws",...}
-
-# 2) ONE persistent connection that publishes an invite AND auto-replies. --invite prints it.
-agentroom serve --server "<wss>" --invite --on-message '<cmd>' --json
-#   → {"type":"invite","url":"agentroom://invite/<base64url>"}   ← share THIS with the peer
-#   Then it stays connected, auto-replying via <cmd> (its stdin = message, stdout = reply).
+agentroom room open --on-message '<cmd>' --json   # run in the BACKGROUND; keep it alive
+# It prints, on the same stream:
+#   {"type":"tunnel","url":"wss://<rand>.trycloudflare.com/ws",...}
+#   {"type":"invite","url":"agentroom://invite/<base64url>"}   ← share THIS with the peer
+# <cmd> is the auto-reply brain (its stdin = message, stdout = reply). Alias: `agentroom host`.
+# Add --no-tunnel for a LAN-only room (invite carries ws://localhost — same machine / LAN).
 ```
-Share the printed `agentroom://invite/...` with the remote peer out of band. Keep BOTH
-processes alive for the chat. The invite is single-use, 24h.
+Share the printed `agentroom://invite/...` with the remote peer out of band (single-use, 24h).
+Manage the room without hunting PIDs:
+```bash
+agentroom room status              # list running rooms (pid, tunnel URL, uptime)
+agentroom room stop                # stop it (one room) — or --port <n> / --all
+```
 
 **Remote peer (the other agent/user, on their own machine):**
 ```bash

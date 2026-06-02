@@ -12,11 +12,18 @@ function getArg(args: string[], flag: string): string | undefined {
  * The message text is piped to the handler's stdin; its stdout (trimmed) is the
  * reply. AGENTROOM_FROM (sender pk) and AGENTROOM_PK (our pk) are exported to it.
  * Returns the reply text, or "" to send nothing (empty stdout, or non-zero exit).
+ *
+ * A handler that never exits (e.g. a misbehaving `claude -p`, a process that
+ * blocks on stdin/network) would otherwise stall the serialized message chain
+ * forever, leaving the bot silently dead. `timeoutMs` bounds each run: on expiry
+ * the child is SIGTERM'd, then SIGKILL'd after a short grace, and we resolve with
+ * code -1 so the caller emits handler_error and the chain keeps moving.
  */
 function runHandler(
   cmd: string,
   text: string,
   env: { from: string; pk: string },
+  timeoutMs: number,
 ): Promise<{ reply: string; code: number; stderr: string }> {
   return new Promise((resolve) => {
     const child = spawn(cmd, {
@@ -25,11 +32,31 @@ function runHandler(
     });
     let out = "";
     let err = "";
+    let settled = false;
+    const done = (r: { reply: string; code: number; stderr: string }) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearTimeout(killTimer);
+      resolve(r);
+    };
+
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    const timer = setTimeout(() => {
+      err += `\n[agentroom] handler timed out after ${Math.round(timeoutMs / 1000)}s — killed`;
+      child.kill("SIGTERM");
+      // Escalate if the handler ignores SIGTERM.
+      killTimer = setTimeout(() => child.kill("SIGKILL"), 2000);
+      killTimer.unref?.();
+      done({ reply: "", code: -1, stderr: err.trim() });
+    }, timeoutMs);
+    timer.unref?.();
+
     child.stdout.on("data", (d) => (out += d.toString()));
     child.stderr.on("data", (d) => (err += d.toString()));
-    child.on("error", (e) => resolve({ reply: "", code: -1, stderr: String(e) }));
+    child.on("error", (e) => done({ reply: "", code: -1, stderr: String(e) }));
     child.on("close", (code) =>
-      resolve({ reply: (code ?? 0) === 0 ? out.trim() : "", code: code ?? 0, stderr: err }),
+      done({ reply: (code ?? 0) === 0 ? out.trim() : "", code: code ?? 0, stderr: err }),
     );
     child.stdin.write(text);
     child.stdin.end();
@@ -55,6 +82,18 @@ export async function cmdServe(args: string[]) {
   const jsonMode = args.includes("--json");
   const once = args.includes("--once");
   const maxTurns = Number(getArg(args, "--max-turns") ?? "0"); // 0 = unlimited
+  if (!Number.isInteger(maxTurns) || maxTurns < 0) {
+    console.error("--max-turns must be a non-negative integer (0 = unlimited)");
+    process.exit(EXIT_USAGE);
+  }
+  // Per-message handler timeout: a handler that never exits would otherwise stall
+  // the serialized chain forever. Default 120s; --handler-timeout 0 disables it.
+  const handlerTimeoutSec = Number(getArg(args, "--handler-timeout") ?? "120");
+  if (!Number.isFinite(handlerTimeoutSec) || handlerTimeoutSec < 0) {
+    console.error("--handler-timeout must be a non-negative number of seconds (0 = no timeout)");
+    process.exit(EXIT_USAGE);
+  }
+  const handlerTimeoutMs = handlerTimeoutSec === 0 ? 2_147_483_647 : handlerTimeoutSec * 1000;
   // Optional opening message sent right after connect, on the same connection,
   // so a bot can *start* a conversation without a second process (a separate
   // `send` would open a duplicate connection for the same identity, and the
@@ -85,7 +124,7 @@ export async function cmdServe(args: string[]) {
       emit({ type: "received", from, text });
       human(`recv ${from.slice(0, 12)}…  ${text}`);
 
-      const { reply, code, stderr } = await runHandler(onMessage, text, { from, pk: client.publicKey() });
+      const { reply, code, stderr } = await runHandler(onMessage, text, { from, pk: client.publicKey() }, handlerTimeoutMs);
       if (code !== 0) {
         emit({ type: "handler_error", from, code, stderr: stderr.slice(0, 500) });
         human(`handler exited ${code} — no reply sent. ${stderr.slice(0, 200)}`);

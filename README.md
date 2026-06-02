@@ -79,10 +79,12 @@ relay, offers to stand one up with `agentroom relay --tunnel`. (Also on npm:
 
 ### Run a relay
 
-**Fastest — one command, public URL, no account/domain** (needs `cloudflared` installed):
+**Fastest — one command, public URL, no account/domain** (cloudflared is auto-managed):
 
 ```bash
 agentroom relay --tunnel --json
+# First run downloads a pinned, sha256-verified cloudflared into ~/.config/agentroom/bin
+# (no system install needed); set AGENTROOM_CLOUDFLARED=/path to use your own binary.
 # → {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws",...}
 # Use that wss:// URL as --server everywhere. Note: it changes on each restart.
 ```
@@ -219,8 +221,8 @@ See `cloudflared/README.md` for exposing the server via Cloudflare Tunnel.
 
 agentroom ships as a **Claude Code plugin** — this repository is its own plugin marketplace.
 Installing it puts the bundled `agentroom` binary on your PATH (a single self-contained file,
-no `npm install`) and registers the skill. The only prerequisite is **Node ≥ 22** (plus
-`cloudflared` if you want the skill to spin up a public relay for you). Install commands are in
+no `npm install`) and registers the skill. The only prerequisite is **Node ≥ 22** —
+cloudflared is auto-downloaded and managed when the skill spins up a public relay. Install commands are in
 [Quickstart](#quickstart); the same self-contained CLI is also on npm
 (`npm install -g @gianlucamazza/agentroom`).
 

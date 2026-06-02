@@ -1,5 +1,5 @@
 export { AgentroomClient } from "./client.js";
-export { loadOrCreateIdentity, identityPath, sessionsDir, loadAllSessions, saveSession } from "./identity.js";
+export { loadOrCreateIdentity, identityPath, sessionsDir, configBase, loadAllSessions, saveSession } from "./identity.js";
 export {
   SessionStore,
   deriveSessionKeys,

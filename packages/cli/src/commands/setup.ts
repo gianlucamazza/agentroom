@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, chmodSy
 import path from "node:path";
 import { loadOrCreateIdentity, identityPath } from "@agentroom/sdk";
 import { toBase64 } from "@agentroom/protocol";
+import { detectCloudflared } from "../cloudflared.js";
 import { EXIT_USAGE } from "../exitcodes.js";
 
 export async function cmdSetup(args: string[]) {
@@ -64,8 +65,12 @@ export async function cmdSetup(args: string[]) {
   const x25519Pk = toBase64(identity.x25519_pk);
   steps.push({ step: "identity", status: isNew ? "created" : "skipped" });
 
+  // cloudflared is auto-managed (downloaded on first `relay --tunnel`); report
+  // what's already available without forcing a download.
+  const cf = detectCloudflared(home);
+
   if (jsonMode) {
-    console.log(JSON.stringify({ ready: true, pk, x25519_pk: x25519Pk, identity_path: idPath, env_path: envFile, data_dir: dataDir, steps }));
+    console.log(JSON.stringify({ ready: true, pk, x25519_pk: x25519Pk, identity_path: idPath, env_path: envFile, data_dir: dataDir, cloudflared: cf, steps }));
     return;
   }
 

@@ -2287,7 +2287,7 @@ var require_websocket = __commonJS({
     var http = __require("http");
     var net = __require("net");
     var tls = __require("tls");
-    var { randomBytes: randomBytes4, createHash } = __require("crypto");
+    var { randomBytes: randomBytes4, createHash: createHash2 } = __require("crypto");
     var { Duplex, Readable } = __require("stream");
     var { URL: URL2 } = __require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -2955,7 +2955,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -3324,7 +3324,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = __require("events");
     var http = __require("http");
     var { Duplex } = __require("stream");
-    var { createHash } = __require("crypto");
+    var { createHash: createHash2 } = __require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -3631,7 +3631,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash("sha1").update(key + GUID).digest("base64");
+        const digest = createHash2("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -4146,8 +4146,8 @@ var init_parseUtil = __esm({
     init_errors();
     init_en();
     makeIssue = (params) => {
-      const { data, path: path5, errorMaps, issueData } = params;
-      const fullPath = [...path5, ...issueData.path || []];
+      const { data, path: path6, errorMaps, issueData } = params;
+      const fullPath = [...path6, ...issueData.path || []];
       const fullIssue = {
         ...issueData,
         path: fullPath
@@ -4455,11 +4455,11 @@ var init_types = __esm({
     init_parseUtil();
     init_util();
     ParseInputLazyPath = class {
-      constructor(parent, value, path5, key) {
+      constructor(parent, value, path6, key) {
         this._cachedPath = [];
         this.parent = parent;
         this.data = value;
-        this._path = path5;
+        this._path = path6;
         this._key = key;
       }
       get path() {
@@ -8047,10 +8047,10 @@ var init_dist = __esm({
 
 // packages/server/dist/chunk-DROMYGQS.js
 import { createServer } from "http";
-import { readFileSync as readFileSync5, existsSync as existsSync6 } from "fs";
+import { readFileSync as readFileSync5, existsSync as existsSync7 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
 import { DatabaseSync } from "node:sqlite";
-import path4 from "path";
+import path5 from "path";
 import fs from "fs";
 import { createHmac, randomBytes as randomBytes3, timingSafeEqual } from "crypto";
 function runAuthMaintenance(now = Date.now()) {
@@ -8459,7 +8459,7 @@ async function startServer() {
   for (const envPath of [".env", "../../.env", "../../../.env"].map(
     (p) => new URL(p, import.meta.url).pathname
   )) {
-    if (existsSync6(envPath)) {
+    if (existsSync7(envPath)) {
       for (const line of readFileSync5(envPath, "utf8").split("\n")) {
         const t = line.trim();
         if (!t || t.startsWith("#")) continue;
@@ -8525,9 +8525,9 @@ var init_chunk_DROMYGQS = __esm({
     "use strict";
     init_wrapper();
     init_dist();
-    DB_PATH = process.env["AGENTROOM_DB"] ?? path4.join(process.cwd(), "data", "agentroom.db");
+    DB_PATH = process.env["AGENTROOM_DB"] ?? path5.join(process.cwd(), "data", "agentroom.db");
     if (DB_PATH !== ":memory:") {
-      fs.mkdirSync(path4.dirname(DB_PATH), { recursive: true });
+      fs.mkdirSync(path5.dirname(DB_PATH), { recursive: true });
     }
     db = new DatabaseSync(DB_PATH);
     db.exec("PRAGMA journal_mode = WAL;");
@@ -9869,6 +9869,155 @@ async function cmdServe(args) {
 // packages/cli/src/commands/relay.ts
 import { spawn as spawn2, fork } from "child_process";
 import { randomBytes } from "crypto";
+
+// packages/cli/src/cloudflared.ts
+import { spawnSync } from "child_process";
+import { createHash } from "crypto";
+import {
+  accessSync,
+  chmodSync as chmodSync2,
+  constants as fsConstants,
+  existsSync as existsSync4,
+  mkdirSync as mkdirSync2,
+  renameSync as renameSync2,
+  rmSync,
+  writeFileSync as writeFileSync2
+} from "fs";
+import path2 from "path";
+var CLOUDFLARED_VERSION = "2026.5.2";
+var ASSETS = {
+  "linux-x64": { asset: "cloudflared-linux-amd64", sha256: "5286698547f03df745adb2355f04c12dde52ef425491e81f433642d695521886" },
+  "linux-arm64": { asset: "cloudflared-linux-arm64", sha256: "5a4e8ce2701105271412059f44b6a0bf1ae4542b4d98ff3180c0c019443a5815" },
+  "linux-arm": { asset: "cloudflared-linux-arm", sha256: "70a4c869a037bd69af6ce2ad0c4da4a7680d94fcfb8d4c70ecddae24d560762f" },
+  "linux-ia32": { asset: "cloudflared-linux-386", sha256: "ad82d1dbed8bbb9d702807cbd97df932cc774d29e9da5c109b7a3c7f7aee2065" },
+  "darwin-x64": { asset: "cloudflared-darwin-amd64.tgz", sha256: "7240f709506bc2c1eb9da4d89cf2555499c60280ecb854b7d80e8f17d4b7903d", archive: "tgz" },
+  "darwin-arm64": { asset: "cloudflared-darwin-arm64.tgz", sha256: "ba94054c9fd4297645093d59d51442e5e546d07bb0516120e694a13d5b216d38", archive: "tgz" },
+  "win32-x64": { asset: "cloudflared-windows-amd64.exe", sha256: "20b9638f685333d623798e733effbad2487093f15ba592f6c7752360ff3b7ab7" },
+  "win32-ia32": { asset: "cloudflared-windows-386.exe", sha256: "6736615e8d2b3b61e868e32907e85641b4ec7b2b8c26bd3361ec15e56e53e242" }
+};
+function isExecutable(p) {
+  try {
+    accessSync(p, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function binaryName() {
+  return process.platform === "win32" ? "cloudflared.exe" : "cloudflared";
+}
+function cachePath(home) {
+  return path2.join(configBase(home), "bin", binaryName());
+}
+function versionOf(bin) {
+  const r = spawnSync(bin, ["--version"], { encoding: "utf8" });
+  if (r.status !== 0) return void 0;
+  const m = `${r.stdout}${r.stderr}`.match(/cloudflared version (\S+)/);
+  return m?.[1];
+}
+function systemCloudflared() {
+  const cmd2 = process.platform === "win32" ? "where" : "which";
+  const r = spawnSync(cmd2, ["cloudflared"], { encoding: "utf8" });
+  if (r.status === 0 && r.stdout.trim()) return r.stdout.trim().split(/\r?\n/)[0];
+  return void 0;
+}
+async function download(spec, binDir, finalPath) {
+  mkdirSync2(binDir, { recursive: true });
+  const url = `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/${spec.asset}`;
+  const res = await fetch(url, { redirect: "follow" });
+  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${spec.asset}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const digest = createHash("sha256").update(buf).digest("hex");
+  if (digest !== spec.sha256) {
+    throw new Error(`sha256 mismatch for ${spec.asset}: expected ${spec.sha256}, got ${digest}`);
+  }
+  const tmp = path2.join(binDir, `.dl.${process.pid}.${spec.asset}`);
+  writeFileSync2(tmp, buf);
+  const installRaw = () => {
+    chmodSync2(tmp, 493);
+    if (process.platform === "win32" && existsSync4(finalPath)) rmSync(finalPath, { force: true });
+    renameSync2(tmp, finalPath);
+  };
+  try {
+    if (spec.archive === "tgz") {
+      const extractDir = path2.join(binDir, `.extract.${process.pid}`);
+      mkdirSync2(extractDir, { recursive: true });
+      try {
+        const r = spawnSync("tar", ["-xzf", tmp, "-C", extractDir], { encoding: "utf8" });
+        if (r.status !== 0) throw new Error(`tar extraction failed: ${r.stderr || r.status}`);
+        const extracted = path2.join(extractDir, "cloudflared");
+        if (!existsSync4(extracted)) throw new Error("cloudflared not found in archive");
+        chmodSync2(extracted, 493);
+        if (existsSync4(finalPath)) rmSync(finalPath, { force: true });
+        renameSync2(extracted, finalPath);
+      } finally {
+        rmSync(extractDir, { recursive: true, force: true });
+      }
+    } else {
+      installRaw();
+    }
+  } finally {
+    if (existsSync4(tmp)) rmSync(tmp, { force: true });
+  }
+}
+async function ensureCloudflared(opts = {}) {
+  const { emit, human, home } = opts;
+  const note = (state, extra = {}) => emit?.({ type: "cloudflared", state, ...extra });
+  const override = process.env["AGENTROOM_CLOUDFLARED"];
+  if (override) {
+    if (isExecutable(override)) {
+      note("env", { path: override });
+      return { path: override, source: "env", version: versionOf(override) };
+    }
+    throw new Error(`AGENTROOM_CLOUDFLARED=${override} is not an executable file`);
+  }
+  const key = `${process.platform}-${process.arch}`;
+  const spec = ASSETS[key];
+  const cached = cachePath(home);
+  if (spec && existsSync4(cached) && versionOf(cached) === CLOUDFLARED_VERSION) {
+    note("cached", { path: cached, version: CLOUDFLARED_VERSION });
+    return { path: cached, source: "cache", version: CLOUDFLARED_VERSION };
+  }
+  if (spec) {
+    try {
+      note("downloading", { version: CLOUDFLARED_VERSION, asset: spec.asset });
+      human?.(`downloading cloudflared ${CLOUDFLARED_VERSION} (${spec.asset})\u2026`);
+      await download(spec, path2.dirname(cached), cached);
+      note("ready", { path: cached, version: CLOUDFLARED_VERSION });
+      return { path: cached, source: "downloaded", version: CLOUDFLARED_VERSION };
+    } catch (e) {
+      const msg = String(e.message ?? e);
+      note("download_failed", { error: msg });
+      human?.(`cloudflared download failed (${msg}) \u2014 trying system PATH`);
+    }
+  } else {
+    note("unsupported_platform", { platform: key });
+  }
+  const sys = systemCloudflared();
+  if (sys) {
+    note("fallback_path", { path: sys });
+    return { path: sys, source: "system", version: versionOf(sys) };
+  }
+  throw new Error(
+    spec ? "could not download cloudflared and none found on PATH (offline?) \u2014 install it or set AGENTROOM_CLOUDFLARED" : `no prebuilt cloudflared for ${key} \u2014 install it manually and set AGENTROOM_CLOUDFLARED or put it on PATH`
+  );
+}
+function detectCloudflared(home) {
+  const override = process.env["AGENTROOM_CLOUDFLARED"];
+  if (override && isExecutable(override)) {
+    return { path: override, source: "env", version: versionOf(override) };
+  }
+  const cached = cachePath(home);
+  if (existsSync4(cached)) {
+    const v = versionOf(cached);
+    if (v) return { path: cached, source: "cache", version: v };
+  }
+  const sys = systemCloudflared();
+  if (sys) return { path: sys, source: "system", version: versionOf(sys) };
+  return null;
+}
+
+// packages/cli/src/commands/relay.ts
 function getArg5(args, flag) {
   const i = args.indexOf(flag);
   return i >= 0 ? args[i + 1] : void 0;
@@ -9972,11 +10121,22 @@ async function cmdRelay(args) {
   human(`relay listening on ws://localhost:${port}/ws  (health: ${base2}/health)`);
   if (useTunnel) {
     human("opening cloudflared quick tunnel (no account/domain needed)\u2026");
-    cf = spawn2("cloudflared", ["tunnel", "--url", base2, "--no-autoupdate"], {
+    let cfBin;
+    try {
+      const cfInfo = await ensureCloudflared({ emit, human });
+      cfBin = cfInfo.path;
+    } catch (e) {
+      const msg = `cloudflared unavailable: ${String(e.message ?? e)}`;
+      emit({ type: "tunnel_error", error: msg });
+      human(msg);
+      shutdown(EXIT_ERROR);
+      return;
+    }
+    cf = spawn2(cfBin, ["tunnel", "--url", base2, "--no-autoupdate"], {
       stdio: ["ignore", "pipe", "pipe"]
     });
     cf.on("error", (e) => {
-      const msg = e.code === "ENOENT" ? "cloudflared not found \u2014 install it (e.g. `yay -S cloudflared`) or run without --tunnel" : String(e);
+      const msg = e.code === "ENOENT" ? `cloudflared binary not runnable at ${cfBin}` : String(e);
       emit({ type: "tunnel_error", error: msg });
       human(msg);
       shutdown(EXIT_ERROR);
@@ -10026,8 +10186,8 @@ async function cmdRelay(args) {
 }
 
 // packages/cli/src/commands/peers.ts
-import { existsSync as existsSync4, readdirSync as readdirSync2, readFileSync as readFileSync3 } from "fs";
-import path2 from "path";
+import { existsSync as existsSync5, readdirSync as readdirSync2, readFileSync as readFileSync3 } from "fs";
+import path3 from "path";
 function getArg6(args, flag) {
   const i = args.indexOf(flag);
   return i >= 0 ? args[i + 1] : void 0;
@@ -10035,7 +10195,7 @@ function getArg6(args, flag) {
 async function cmdPeers(args) {
   const home = getArg6(args, "--home");
   const dir = sessionsDir(home);
-  if (!existsSync4(dir)) {
+  if (!existsSync5(dir)) {
     console.log("No sessions found. Complete an invite handshake first.");
     return;
   }
@@ -10048,7 +10208,7 @@ async function cmdPeers(args) {
   const rows = [];
   for (const file of files) {
     try {
-      const raw = JSON.parse(readFileSync3(path2.join(dir, file), "utf8"));
+      const raw = JSON.parse(readFileSync3(path3.join(dir, file), "utf8"));
       rows.push({
         pk: raw.peerPk ?? file.replace(".json", ""),
         lastUsedAt: raw.lastUsedAt ?? 0,
@@ -10072,8 +10232,8 @@ async function cmdPeers(args) {
 
 // packages/cli/src/commands/setup.ts
 import { randomBytes as randomBytes2 } from "crypto";
-import { readFileSync as readFileSync4, writeFileSync as writeFileSync2, mkdirSync as mkdirSync2, existsSync as existsSync5, unlinkSync as unlinkSync2, chmodSync as chmodSync2 } from "fs";
-import path3 from "path";
+import { readFileSync as readFileSync4, writeFileSync as writeFileSync3, mkdirSync as mkdirSync3, existsSync as existsSync6, unlinkSync as unlinkSync2, chmodSync as chmodSync3 } from "fs";
+import path4 from "path";
 init_dist();
 async function cmdSetup(args) {
   const jsonMode = args.includes("--json");
@@ -10090,10 +10250,10 @@ async function cmdSetup(args) {
     process.exit(EXIT_USAGE);
   }
   const steps = [];
-  const envFile = path3.resolve(cwd, ".env");
-  const envExample = path3.resolve(cwd, ".env.example");
-  if (!existsSync5(envFile)) {
-    if (!existsSync5(envExample)) {
+  const envFile = path4.resolve(cwd, ".env");
+  const envExample = path4.resolve(cwd, ".env.example");
+  if (!existsSync6(envFile)) {
+    if (!existsSync6(envExample)) {
       const msg = `.env.example not found at ${cwd}. Run this command from the agentroom repo root.`;
       if (jsonMode) console.log(JSON.stringify({ ready: false, error: msg }));
       else console.error(`error: ${msg}`);
@@ -10104,27 +10264,28 @@ async function cmdSetup(args) {
       /^HMAC_SECRET=.*$/m,
       `HMAC_SECRET=${secret2}`
     );
-    writeFileSync2(envFile, content, { encoding: "utf8" });
-    chmodSync2(envFile, 384);
+    writeFileSync3(envFile, content, { encoding: "utf8" });
+    chmodSync3(envFile, 384);
     steps.push({ step: "env", status: "created" });
   } else {
     steps.push({ step: "env", status: "skipped" });
   }
-  const dataDir = path3.resolve(cwd, "data");
-  mkdirSync2(dataDir, { recursive: true });
+  const dataDir = path4.resolve(cwd, "data");
+  mkdirSync3(dataDir, { recursive: true });
   steps.push({ step: "data/", status: "ok" });
   const idPath = identityPath(home);
-  if (forceMode && existsSync5(idPath)) {
+  if (forceMode && existsSync6(idPath)) {
     if (!jsonMode) console.warn(`warning: --force: removing existing identity at ${idPath}`);
     unlinkSync2(idPath);
   }
-  const isNew = !existsSync5(idPath);
+  const isNew = !existsSync6(idPath);
   const identity = await loadOrCreateIdentity(home);
   const pk = toBase64(identity.ed25519_pk);
   const x25519Pk = toBase64(identity.x25519_pk);
   steps.push({ step: "identity", status: isNew ? "created" : "skipped" });
+  const cf = detectCloudflared(home);
   if (jsonMode) {
-    console.log(JSON.stringify({ ready: true, pk, x25519_pk: x25519Pk, identity_path: idPath, env_path: envFile, data_dir: dataDir, steps }));
+    console.log(JSON.stringify({ ready: true, pk, x25519_pk: x25519Pk, identity_path: idPath, env_path: envFile, data_dir: dataDir, cloudflared: cf, steps }));
     return;
   }
   for (const s of steps) {

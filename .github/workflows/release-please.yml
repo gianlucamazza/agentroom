@@ -7,12 +7,15 @@ name: Release Please
 #                    see release-please-config.json) and regenerates the CHANGELOG.
 #   merge that PR ─► release-please creates the tag + GitHub Release, then this same
 #                    run attaches the self-contained bundle and (optionally) publishes
-#                    to npm. Everything happens in ONE workflow run, so no PAT/GitHub
-#                    App is needed to trigger downstream jobs (the GITHUB_TOKEN that
-#                    creates the release cannot, by design, trigger a separate workflow).
+#                    to npm. The tag/asset/npm jobs are downstream JOBS in this one
+#                    workflow run, so GITHUB_TOKEN drives them fine (no PAT needed there).
 #
-# CI (ci.yml) already gates every PR on tests + an in-sync bin/agentroom + matching
-# manifest versions, so there is no separate release-time gate here.
+# The Release PR itself is created with RELEASE_PLEASE_TOKEN (a PAT) — see the token note
+# on the action below: a GITHUB_TOKEN-created PR cannot trigger ci.yml, so it could never
+# satisfy the strict required checks on main.
+#
+# CI (ci.yml) gates every PR on tests + an in-sync bin/agentroom + matching manifest
+# versions, so there is no separate release-time gate here.
 
 on:
   push:
@@ -43,7 +46,12 @@ jobs:
       - uses: googleapis/release-please-action@v4
         id: release
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # A PAT (not the default GITHUB_TOKEN): events created by GITHUB_TOKEN do not
+          # trigger other workflows, so the Release PR would carry zero checks and could
+          # never satisfy the branch-protection required checks. A PAT-created PR triggers
+          # ci.yml normally. Falls back to GITHUB_TOKEN if the secret is unset (the PR is
+          # still opened; it just won't run CI until the secret is configured).
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 

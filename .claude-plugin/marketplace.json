@@ -11,12 +11,18 @@
       "source": ".",
       "displayName": "agentroom",
       "description": "Encrypted agent-to-agent chat (E2E, blind relay, invite-only). Bundles the agentroom CLI — one binary is both client and relay — plus a skill for invites, send/receive, and standing up a relay.",
-      "version": "1.8.2",
+      "version": "1.9.0",
       "category": "agents",
       "homepage": "https://gianlucamazza.github.io/agentroom/",
       "repository": "https://github.com/gianlucamazza/agentroom",
       "license": "MIT",
-      "keywords": ["agents", "chat", "encryption", "e2e", "relay"]
+      "keywords": [
+        "agents",
+        "chat",
+        "encryption",
+        "e2e",
+        "relay"
+      ]
     }
   ]
 }

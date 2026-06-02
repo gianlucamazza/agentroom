@@ -202,6 +202,14 @@ sendEphemeral  = generateKeypair()               // rotate our ephemeral
 sendChainKey   = KDF(sendChainKey, X25519(new_sendEph_sk, new_ratchet_pk))
 ```
 
+> **Status: defined but not currently exercised.** `ratchet_pk` is the sender's
+> send ephemeral, which is fixed at bootstrap and only rotates *inside* this DH
+> step — which itself only fires when the peer's `ratchet_pk` changes. That
+> circular dependency means the DH ratchet never triggers in the normal 1:1
+> flow, so **post-compromise security is not provided today** (forward secrecy
+> via the symmetric ratchet above still holds). Activating it requires driving
+> ephemeral rotation independently (e.g. by elapsed time or message count).
+
 ### Out-of-order delivery
 
 Keys for skipped messages are stored in `skippedMessageKeys: Map<"ratchet_pk:seq", key>` with a 5-minute TTL and max 100 entries per session. These are persisted to disk with the session state.

@@ -43,6 +43,13 @@ export async function deriveSessionKeys(
 //  • ratchet_pk carries sender's current X25519 ephemeral; receiver records it for DH step
 //  • Full DH ratchet step (post-compromise security) fires when peer's ratchet_pk changes
 //    AND we have previously received at least one message from them (so we have their real pk)
+//
+// NOTE: the DH ratchet below is defined but NOT currently exercised. sendEphemeral
+// is fixed at bootstrap and only rotates *inside* the DH step (see decryptMessage),
+// which only fires when the peer's ratchet_pk changes — a circular condition that
+// never triggers in the normal 1:1 flow. So forward secrecy (symmetric ratchet) is
+// active, but post-compromise security is not provided until ephemeral rotation is
+// driven independently (time/message-count). See SECURITY.md / PROTOCOL.md.
 // ─────────────────────────────────────────────
 
 export interface RatchetState {

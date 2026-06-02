@@ -9056,6 +9056,13 @@ var AgentroomClient = class {
     return new Promise((resolve, reject) => {
       const ws = new wrapper_default(wsUrl);
       this.ws = ws;
+      let settled = false;
+      let established = false;
+      const settle = (cb) => {
+        if (settled) return;
+        settled = true;
+        cb();
+      };
       ws.once("open", async () => {
         if (!withHello) return;
         const challengeBytes = new TextEncoder().encode(challenge);
@@ -9085,31 +9092,36 @@ var AgentroomClient = class {
           this.sessionToken = frame.session_token;
           ws.off("message", onFirstMessage);
           ws.on("message", this._handleRawMessage.bind(this));
-          if (withHello) resolve();
+          established = true;
+          settle(() => {
+            if (withHello) resolve();
+          });
           return;
         }
         if (frame.type === "ERROR" && !withHello) {
           ws.close();
-          resolve(false);
+          settle(() => resolve(false));
           return;
         }
         if (!withHello) {
           ws.off("message", onFirstMessage);
           ws.on("message", this._handleRawMessage.bind(this));
-          resolve(true);
+          established = true;
+          settle(() => resolve(true));
           await this._handleRawMessage(raw);
         }
       };
       ws.on("message", onFirstMessage);
-      ws.once("error", (e) => reject(e));
+      ws.once("error", (e) => settle(() => reject(e)));
       ws.on("close", (code, reason) => {
         ws.off("message", onFirstMessage);
         this.ws = null;
         const reasonStr = reason?.toString() || `code ${code}`;
-        if (!withHello && code !== 1e3) {
-          resolve(false);
+        if (!settled) {
+          settle(() => withHello ? reject(new Error(`connection closed during handshake: ${reasonStr}`)) : resolve(false));
           return;
         }
+        if (!established) return;
         if (this.reconnectEnabled && !this.destroyed) {
           for (const h of this.onDisconnectHandlers) h(reasonStr);
           void this._scheduleReconnect();
@@ -9155,8 +9167,15 @@ var AgentroomClient = class {
       if (!this.destroyed && this.reconnectEnabled) void this._scheduleReconnect();
     }
   }
+  /** Send a frame. Returns false (and warns) if the socket isn't open, so the
+   *  caller can fail fast instead of dropping the frame silently. */
   _sendRaw(data) {
-    this.ws?.send(JSON.stringify(data));
+    if (!this.ws || this.ws.readyState !== wrapper_default.OPEN) {
+      console.warn("[sdk] socket not open \u2014 outbound frame not sent");
+      return false;
+    }
+    this.ws.send(JSON.stringify(data));
+    return true;
   }
   async _handleFrame(frame) {
     switch (frame.type) {
@@ -9266,7 +9285,7 @@ var AgentroomClient = class {
       url
     );
     await this.waitAck((msg_id) => {
-      this._sendRaw({
+      return this._sendRaw({
         v: PROTOCOL_VERSION,
         type: "INVITE_PUBLISH",
         msg_id,
@@ -9301,7 +9320,7 @@ var AgentroomClient = class {
     );
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
     await this.waitAck((msg_id) => {
-      this._sendRaw({
+      return this._sendRaw({
         v: PROTOCOL_VERSION,
         type: "INVITE_CLAIM",
         msg_id,
@@ -9334,7 +9353,7 @@ or: agentroom invite accept '<url>' --server <url>`
     );
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
     await this.waitAck((msg_id) => {
-      this._sendRaw({
+      return this._sendRaw({
         v: PROTOCOL_VERSION,
         type: "MSG",
         msg_id,
@@ -9407,7 +9426,11 @@ or: agentroom invite accept '<url>' --server <url>`
         if (status === "error") reject(new Error(err ?? "server error"));
         else resolve();
       });
-      send2(msg_id);
+      if (send2(msg_id) === false) {
+        clearTimeout(timeout);
+        this.pendingAcks.delete(msg_id);
+        reject(new Error("socket not open \u2014 message not sent"));
+      }
     });
   }
 };

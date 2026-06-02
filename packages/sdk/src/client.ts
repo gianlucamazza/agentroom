@@ -145,6 +145,17 @@ export class AgentroomClient {
       const ws = new WebSocket(wsUrl);
       this.ws = ws;
 
+      // `settled` guards the promise so that error+close (which can both fire on
+      // a failed connection) don't double-settle. `established` records whether
+      // the handshake actually completed — only an established connection that
+      // *later* drops should trigger reconnect here; handshake failures are
+      // propagated to the caller (_doConnect / _scheduleReconnect), which owns
+      // retry. Without this split, error→reject and close→_scheduleReconnect ran
+      // two concurrent reconnect loops.
+      let settled = false;
+      let established = false;
+      const settle = (cb: () => void) => { if (settled) return; settled = true; cb(); };
+
       ws.once("open", async () => {
         if (!withHello) return; // token auth: just wait for server-side flush
         const challengeBytes = new TextEncoder().encode(challenge!);
@@ -173,14 +184,15 @@ export class AgentroomClient {
           this.sessionToken = frame.session_token;
           ws.off("message", onFirstMessage);
           ws.on("message", this._handleRawMessage.bind(this));
-          if (withHello) (resolve as () => void)();
+          established = true;
+          settle(() => { if (withHello) (resolve as () => void)(); });
           return;
         }
 
         if (frame.type === "ERROR" && !withHello) {
           // Token rejected
           ws.close();
-          (resolve as (v: boolean) => void)(false);
+          settle(() => (resolve as (v: boolean) => void)(false));
           return;
         }
 
@@ -188,25 +200,34 @@ export class AgentroomClient {
         if (!withHello) {
           ws.off("message", onFirstMessage);
           ws.on("message", this._handleRawMessage.bind(this));
-          (resolve as (v: boolean) => void)(true);
+          established = true;
+          settle(() => (resolve as (v: boolean) => void)(true));
           // Re-process this first message
           await this._handleRawMessage(raw);
         }
       };
 
       ws.on("message", onFirstMessage);
-      ws.once("error", (e) => reject(e));
+      ws.once("error", (e) => settle(() => reject(e)));
       ws.on("close", (code, reason) => {
         ws.off("message", onFirstMessage);
         this.ws = null;
         const reasonStr = reason?.toString() || `code ${code}`;
 
-        if (!withHello && code !== 1000) {
-          // Token connect failed before completing
-          (resolve as (v: boolean) => void)(false);
+        if (!settled) {
+          // Closed mid-handshake: propagate to the caller, which owns retry.
+          // (Token auth resolves false → caller falls through to full HELLO.)
+          settle(() => withHello
+            ? reject(new Error(`connection closed during handshake: ${reasonStr}`))
+            : (resolve as (v: boolean) => void)(false));
           return;
         }
 
+        // Handshake already failed and settled (e.g. via "error"): the caller
+        // reschedules — don't also schedule here.
+        if (!established) return;
+
+        // Established connection dropped — this is where reconnect belongs.
         if (this.reconnectEnabled && !this.destroyed) {
           for (const h of this.onDisconnectHandlers) h(reasonStr);
           void this._scheduleReconnect();
@@ -256,8 +277,15 @@ export class AgentroomClient {
     }
   }
 
-  private _sendRaw(data: unknown) {
-    this.ws?.send(JSON.stringify(data));
+  /** Send a frame. Returns false (and warns) if the socket isn't open, so the
+   *  caller can fail fast instead of dropping the frame silently. */
+  private _sendRaw(data: unknown): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn("[sdk] socket not open — outbound frame not sent");
+      return false;
+    }
+    this.ws.send(JSON.stringify(data));
+    return true;
   }
 
   private async _handleFrame(frame: AnyFrame) {
@@ -369,7 +397,7 @@ export class AgentroomClient {
     );
 
     await this.waitAck((msg_id) => {
-      this._sendRaw({
+      return this._sendRaw({
         v: PROTOCOL_VERSION,
         type: "INVITE_PUBLISH",
         msg_id,
@@ -412,7 +440,7 @@ export class AgentroomClient {
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
 
     await this.waitAck((msg_id) => {
-      this._sendRaw({
+      return this._sendRaw({
         v: PROTOCOL_VERSION,
         type: "INVITE_CLAIM",
         msg_id,
@@ -451,7 +479,7 @@ export class AgentroomClient {
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
 
     await this.waitAck((msg_id) => {
-      this._sendRaw({
+      return this._sendRaw({
         v: PROTOCOL_VERSION,
         type: "MSG",
         msg_id,
@@ -517,7 +545,7 @@ export class AgentroomClient {
     }
   }
 
-  private waitAck(send: (msg_id: string) => void): Promise<void> {
+  private waitAck(send: (msg_id: string) => boolean | void): Promise<void> {
     const msg_id = randomUUID();
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -529,7 +557,13 @@ export class AgentroomClient {
         if (status === "error") reject(new Error(err ?? "server error"));
         else resolve();
       });
-      send(msg_id);
+      // Fail fast if the frame couldn't be sent (socket not open) instead of
+      // waiting out the 10s ACK timeout for a reply that can never arrive.
+      if (send(msg_id) === false) {
+        clearTimeout(timeout);
+        this.pendingAcks.delete(msg_id);
+        reject(new Error("socket not open — message not sent"));
+      }
     });
   }
 }

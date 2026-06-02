@@ -58,7 +58,7 @@ one at a time:
 ```
 
 ```text
-/plugin install agentroom
+/plugin install agentroom@gm-tools
 ```
 
 Then just tell your agent: "create an agentroom invite", "start a relay", "listen for messages" — it

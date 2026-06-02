@@ -8,7 +8,7 @@ server is a blind relay that never sees plaintext.
 npm install -g @gianlucamazza/agentroom
 # or:  npx @gianlucamazza/agentroom <command>
 
-agentroom relay --tunnel       # stand up a public relay (needs cloudflared)
+agentroom relay --tunnel       # stand up a public relay (cloudflared auto-managed)
 agentroom invite create --server <wss>
 agentroom listen --json
 agentroom send <peer_pk> "hello"

@@ -1,59 +1,32 @@
-/* agentroom landing - vanilla CSS, no external dependencies */
+/* agentroom landing — aligned with the gianlucamazza.it brand:
+   dark-only, warm near-black surfaces, a single terracotta accent,
+   Inter + JetBrains Mono. Fonts loaded via <link> in each HTML head. */
 :root {
-  color-scheme: light;
-  --bg: #ffffff;
-  --bg-soft: #f6f8fa;
-  --bg-strong: #eef3f8;
-  --card: #ffffff;
-  --text: #1f2328;
-  --muted: #59636e;
-  --subtle: #6e7781;
-  --border: #d1d9e0;
-  --border-strong: #8c959f;
-  --accent: #0969da;
-  --accent-strong: #0550ae;
-  --accent-soft: #ddf4ff;
-  --green: #1a7f37;
-  --green-soft: #dafbe1;
-  --code-bg: #0f1722;
-  --code-text: #eaf2fb;
-  --hero-bg: #07111f;
-  --hero-text: #f0f6fc;
-  --hero-muted: #b6c7d8;
-  --hero-line: rgba(173, 205, 255, 0.22);
-  --shadow: 0 18px 50px rgba(31, 35, 40, 0.12);
-  --shadow-soft: 0 10px 28px rgba(31, 35, 40, 0.08);
+  color-scheme: dark;
+  --bg: #0c0c0b;
+  --bg-soft: #141413;
+  --bg-strong: #1f1f1d;
+  --card: #161615;
+  --text: #f4f1ea;
+  --muted: #a8a29a;
+  --subtle: #8f8a82;
+  --border: rgba(244, 241, 234, 0.09);
+  --border-strong: rgba(244, 241, 234, 0.2);
+  --accent: #b45f43;
+  --accent-strong: #c9714f;
+  --accent-soft: rgba(180, 95, 67, 0.14);
+  --code-bg: #131312;
+  --code-text: #f4f1ea;
+  --hero-bg: #0a0a0a;
+  --hero-text: #f4f1ea;
+  --hero-muted: #a8a29a;
+  --hero-line: rgba(244, 241, 234, 0.1);
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.34);
   --radius: 8px;
   --radius-sm: 6px;
-  --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --bg: #0d1117;
-    --bg-soft: #151b23;
-    --bg-strong: #1b2330;
-    --card: #111820;
-    --text: #e6edf3;
-    --muted: #9aa7b3;
-    --subtle: #8b949e;
-    --border: #30363d;
-    --border-strong: #58616d;
-    --accent: #58a6ff;
-    --accent-strong: #79b8ff;
-    --accent-soft: #10243a;
-    --green: #56d364;
-    --green-soft: #173823;
-    --code-bg: #070c12;
-    --code-text: #e6edf3;
-    --hero-bg: #05080d;
-    --hero-text: #f0f6fc;
-    --hero-muted: #aab7c4;
-    --hero-line: rgba(173, 205, 255, 0.16);
-    --shadow: 0 18px 50px rgba(0, 0, 0, 0.38);
-    --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.26);
-  }
+  --sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }
 
 *,
@@ -71,12 +44,14 @@ body {
   min-width: 320px;
   color: var(--text);
   background:
-    radial-gradient(circle at 10% 4%, rgba(9, 105, 218, 0.08), transparent 30rem),
-    radial-gradient(circle at 90% 24%, rgba(26, 127, 55, 0.06), transparent 28rem),
-    linear-gradient(180deg, var(--bg) 0%, var(--bg-soft) 100%);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    radial-gradient(circle at 12% 4%, rgba(180, 95, 67, 0.1), transparent 32rem),
+    radial-gradient(circle at 88% 22%, rgba(180, 95, 67, 0.05), transparent 28rem),
+    linear-gradient(180deg, var(--bg) 0%, #0a0a09 100%);
+  font-family: var(--sans);
   font-size: 16px;
   line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -128,10 +103,10 @@ svg {
   overflow: hidden;
   color: var(--hero-text);
   background:
-    radial-gradient(circle at 22% 20%, rgba(88, 166, 255, 0.34), transparent 25rem),
-    radial-gradient(circle at 78% 16%, rgba(63, 185, 80, 0.22), transparent 25rem),
-    radial-gradient(circle at 58% 96%, rgba(163, 113, 247, 0.14), transparent 30rem),
-    linear-gradient(135deg, #05080d 0%, #07111f 48%, #10243a 100%);
+    radial-gradient(circle at 22% 20%, rgba(180, 95, 67, 0.3), transparent 26rem),
+    radial-gradient(circle at 80% 14%, rgba(201, 113, 79, 0.16), transparent 26rem),
+    radial-gradient(circle at 58% 98%, rgba(180, 95, 67, 0.1), transparent 30rem),
+    linear-gradient(135deg, #0a0a0a 0%, #0c0c0b 48%, #16130f 100%);
 }
 
 .site-header::before {
@@ -202,7 +177,7 @@ svg {
   top: 6px;
   width: 12px;
   height: 10px;
-  border: 3px solid #79b8ff;
+  border: 3px solid #c9714f;
   border-bottom: 0;
   border-radius: 9px 9px 0 0;
 }
@@ -212,7 +187,7 @@ svg {
   width: 16px;
   height: 12px;
   border-radius: 3px;
-  background: linear-gradient(135deg, #79b8ff, #56d364);
+  background: linear-gradient(135deg, #c9714f, #b45f43);
 }
 
 .nav-links {
@@ -259,7 +234,7 @@ svg {
 }
 
 .eyebrow {
-  color: #79b8ff;
+  color: var(--accent-strong);
 }
 
 h1,
@@ -278,22 +253,22 @@ h3 {
 h1 {
   margin-bottom: 16px;
   font-size: clamp(3.8rem, 9vw, 7.8rem);
-  font-weight: 850;
-  letter-spacing: 0;
+  font-weight: 600;
+  letter-spacing: -0.03em;
 }
 
 h2 {
   margin-bottom: 18px;
   font-size: clamp(2rem, 4vw, 3.25rem);
-  font-weight: 800;
-  letter-spacing: 0;
+  font-weight: 560;
+  letter-spacing: -0.02em;
 }
 
 h3 {
   margin-bottom: 10px;
   font-size: 1.14rem;
-  font-weight: 760;
-  letter-spacing: 0;
+  font-weight: 560;
+  letter-spacing: -0.01em;
 }
 
 .tagline {
@@ -324,10 +299,10 @@ h3 {
   align-items: center;
   min-height: 30px;
   padding: 4px 11px;
-  border: 1px solid rgba(121, 184, 255, 0.28);
+  border: 1px solid rgba(180, 95, 67, 0.32);
   border-radius: 999px;
-  color: #d8ecff;
-  background: rgba(88, 166, 255, 0.12);
+  color: #efd9d0;
+  background: rgba(180, 95, 67, 0.12);
   font-size: 0.82rem;
   font-weight: 650;
 }
@@ -358,7 +333,7 @@ h3 {
 .btn-primary {
   color: #ffffff;
   background: var(--accent);
-  box-shadow: 0 14px 30px rgba(9, 105, 218, 0.34);
+  box-shadow: 0 14px 30px rgba(180, 95, 67, 0.34);
 }
 
 .btn-primary:hover {
@@ -393,8 +368,8 @@ h3 {
   background:
     linear-gradient(var(--hero-line), var(--hero-line)) 50% 50% / 1px 100% no-repeat,
     linear-gradient(90deg, var(--hero-line), var(--hero-line)) 50% 50% / 100% 1px no-repeat,
-    radial-gradient(circle, rgba(88, 166, 255, 0.2), transparent 62%);
-  box-shadow: inset 0 0 60px rgba(121, 184, 255, 0.08), 0 34px 72px rgba(0, 0, 0, 0.26);
+    radial-gradient(circle, rgba(180, 95, 67, 0.22), transparent 62%);
+  box-shadow: inset 0 0 60px rgba(201, 113, 79, 0.1), 0 34px 72px rgba(0, 0, 0, 0.32);
 }
 
 .lock-orbit::before,
@@ -417,7 +392,7 @@ h3 {
 .sealed-path {
   position: absolute;
   inset: 0;
-  color: rgba(216, 236, 255, 0.52);
+  color: rgba(244, 241, 234, 0.5);
 }
 
 .lock-body {
@@ -428,8 +403,8 @@ h3 {
   margin-top: 44px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 18px;
-  background: linear-gradient(135deg, #79b8ff 0%, #56d364 100%);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  background: linear-gradient(135deg, #c9714f 0%, #b45f43 100%);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
 .lock-body::before {
@@ -440,7 +415,7 @@ h3 {
   width: 76px;
   height: 68px;
   transform: translateX(-50%);
-  border: 16px solid #d8ecff;
+  border: 16px solid #efd9d0;
   border-bottom: 0;
   border-radius: 48px 48px 0 0;
 }
@@ -471,7 +446,7 @@ h3 {
 
 .section-ruled {
   background:
-    linear-gradient(180deg, rgba(9, 105, 218, 0.04), transparent 44%),
+    linear-gradient(180deg, rgba(180, 95, 67, 0.05), transparent 44%),
     var(--bg-soft);
 }
 
@@ -589,7 +564,7 @@ h3 {
   position: absolute;
   inset: 0 0 auto;
   height: 3px;
-  background: linear-gradient(90deg, var(--accent), var(--green));
+  background: linear-gradient(90deg, var(--accent), #c9714f);
 }
 
 .journey-card-featured {
@@ -725,9 +700,9 @@ tr:last-child td {
   padding: 5px 9px;
   border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 5px;
-  color: #d8ecff;
+  color: #efd9d0;
   background: rgba(255, 255, 255, 0.08);
-  font: 760 0.76rem system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 600 0.76rem var(--sans);
   cursor: pointer;
 }
 
@@ -738,9 +713,9 @@ tr:last-child td {
 }
 
 .copy-btn.copied {
-  color: var(--green);
-  border-color: var(--green);
-  background: var(--green-soft);
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .security-list {

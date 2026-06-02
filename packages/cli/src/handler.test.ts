@@ -43,4 +43,13 @@ describe("runHandler", () => {
     expect(r.code).not.toBe(0); // shell exits 127, or spawn error → -1
     expect(r.reply).toBe("");
   });
+
+  it("does not throw when the handler ignores stdin and exits early (EPIPE)", async () => {
+    // A large payload to a handler that never reads stdin reliably triggers an
+    // EPIPE on the stdin write; it must be swallowed, not crash the process.
+    const big = "x".repeat(1024 * 1024);
+    const r = await runHandler("true", big, env, 5000);
+    expect(r.code).toBe(0);
+    expect(r.reply).toBe("");
+  });
 });

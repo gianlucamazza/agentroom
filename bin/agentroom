@@ -9743,6 +9743,8 @@ function runHandler(cmd2, text, env, timeoutMs) {
       "close",
       (code) => done({ reply: (code ?? 0) === 0 ? out.trim() : "", code: code ?? 0, stderr: err })
     );
+    child.stdin.on("error", () => {
+    });
     child.stdin.write(text);
     child.stdin.end();
   });

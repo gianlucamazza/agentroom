@@ -57,6 +57,11 @@ export function runHandler(
     child.on("close", (code) =>
       done({ reply: (code ?? 0) === 0 ? out.trim() : "", code: code ?? 0, stderr: err }),
     );
+    // A handler that ignores its input (e.g. `true`, or one that exits before
+    // reading) closes stdin early, so writing the message races its exit and
+    // emits EPIPE. That's a benign outcome — the child's close/stdout still
+    // decide the reply — but an unhandled stream 'error' would crash `serve`.
+    child.stdin.on("error", () => { /* handler closed stdin — ignore */ });
     child.stdin.write(text);
     child.stdin.end();
   });

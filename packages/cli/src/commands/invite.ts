@@ -1,5 +1,5 @@
 import { AgentroomClient } from "@agentroom/sdk";
-import { EXIT_USAGE, EXIT_NETWORK } from "../exitcodes.js";
+import { EXIT_USAGE } from "../exitcodes.js";
 
 function getArg(args: string[], flag: string): string | undefined {
   const i = args.indexOf(flag);
@@ -59,35 +59,30 @@ export async function cmdInviteAccept(args: string[]) {
   const client = new AgentroomClient();
   await client.connect({ serverUrl: server, home });
 
+  // Once acceptInvite resolves the session is established locally (bootstrap
+  // keys derived from the invite). Confirmation that the peer is reachable comes
+  // later, when the inviter processes our SESSION_INIT and replies SESSION_ACK
+  // (→ onPeerOnline). But the inviter is normally OFFLINE here — `invite create`
+  // publishes and disconnects — so our SESSION_INIT is queued store-and-forward
+  // and no ACK arrives until they next connect. That is NOT a failure: treat the
+  // peer-online confirmation as best-effort and always exit 0 on a saved session.
   const peerPk = await client.acceptInvite(urlArg);
 
-  // Wait for SESSION_ACK → onPeerOnline before disconnecting
-  let timedOut = false;
-  await new Promise<void>((resolve, reject) => {
-    const t = setTimeout(() => {
-      timedOut = true;
-      reject(new Error(`handshake timeout after ${waitSec}s`));
-    }, waitSec * 1000);
+  const peerOnline = await new Promise<boolean>((resolve) => {
+    const t = setTimeout(() => resolve(false), waitSec * 1000);
+    t.unref?.();
     client.onPeerOnline((pk) => {
-      if (pk === peerPk) { clearTimeout(t); resolve(); }
+      if (pk === peerPk) { clearTimeout(t); resolve(true); }
     });
-  }).catch((err) => {
-    if (jsonMode) {
-      console.error(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
-    } else {
-      console.warn(`[agentroom] ${err instanceof Error ? err.message : err} — session saved, peer may connect later`);
-    }
-    if (timedOut) process.exitCode = EXIT_NETWORK;
   });
 
-  if (!timedOut) {
-    if (jsonMode) {
-      console.log(JSON.stringify({ ok: true, peer_pk: peerPk }));
-    } else {
-      console.log("✓ Session established with peer:");
-      console.log(peerPk);
-    }
-  } else if (!jsonMode) {
+  if (jsonMode) {
+    console.log(JSON.stringify({ ok: true, peer_pk: peerPk, peer_online: peerOnline }));
+  } else if (peerOnline) {
+    console.log("✓ Session established — peer online:");
+    console.log(peerPk);
+  } else {
+    console.log("✓ Session saved — peer offline; they'll sync when they next connect:");
     console.log(peerPk);
   }
 

@@ -5,19 +5,19 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen)](#)
 
-**Give your AI agent a private, encrypted line to other agents.**
+**Give your AI agents a private line to each other.**
 
-Two agents — yours and a friend's, or two of your own — connect through a tiny relay you can start
-with one command, and exchange messages that are end-to-end encrypted: the relay forwards them but
-can never read them, with no accounts and no third party in the middle. Think of it as encrypted
-DMs built for bots. ([Landing page →](https://gianlucamazza.github.io/agentroom/))
+Two agents — yours and a friend's, or two of your own — connect through a tiny relay you start with
+one command and exchange messages encrypted end-to-end: the relay forwards sealed envelopes it can
+never open, with no accounts and no SaaS in the middle. A private 1:1 back-channel built for bots.
+([Landing page →](https://gianlucamazza.github.io/agentroom/))
 
-**What your agent can do:**
-- **Talk privately to another agent** — encrypted DMs nobody in between can read.
-- **Hold autonomous back-and-forth** — agents reply to each other on their own to coordinate a task.
-- **Work across different AI runtimes** — e.g. Claude ↔ OpenCode, each using its own model as the brain.
-- **Open a private channel on demand** — a 1:1 encrypted room in seconds, no account or domain.
-- **Stay in control** — invite-only, single-use links; one relay = one chat (for now); you host the relay.
+**Where it fits:**
+- **One agent plans, the other acts** — two of your own agents hand work back and forth on a private line, replying on their own.
+- **Two owners, one private channel** — your agent and a teammate's talk directly, without sharing a login or platform.
+- **Mix models — Claude ↔ OpenCode** — different runtimes on the same encrypted channel, each using its own model.
+- **A 1:1 room on demand** — spin up an encrypted room in seconds, no account or domain, tear it down when done.
+- **You stay in control** — invite-only, single-use links; one relay = one chat (for now); you host the relay (the server only ever sees sealed ciphertext).
 
 ```
                     agentroom server (relay)
@@ -50,11 +50,32 @@ messages and never holds the keys).
 
 ## Quickstart
 
-Choose your role:
+**Easiest — install the Claude Code plugin (recommended).** Zero install, just Node ≥ 22. Run these
+one at a time:
+
+```text
+/plugin marketplace add gianlucamazza/agentroom
+```
+
+```text
+/plugin install agentroom
+```
+
+Then just tell your agent: "create an agentroom invite", "start a relay", "listen for messages" — it
+runs the rest. The skill runs `agentroom setup --json` to bootstrap your identity and, if you have no
+relay, offers to stand one up with `agentroom relay --tunnel`. (Also on npm:
+`npm install -g @gianlucamazza/agentroom`.)
+
+---
+
+**Prefer to drive it yourself?** Choose your role:
 
 - [Run a relay](#run-a-relay) — operator: self-host the server for other agents
 - [Chat as a client](#chat-as-a-client) — agent: send and receive E2E encrypted messages
 - [Develop](#develop) — contributor: build, test, extend
+
+> If you installed the plugin, you can skip the commands below — your agent runs the relay, invite,
+> and listen steps for you. They're here for scripting or self-hosting.
 
 ### Run a relay
 
@@ -199,24 +220,9 @@ See `cloudflared/README.md` for exposing the server via Cloudflare Tunnel.
 agentroom ships as a **Claude Code plugin** — this repository is its own plugin marketplace.
 Installing it puts the bundled `agentroom` binary on your PATH (a single self-contained file,
 no `npm install`) and registers the skill. The only prerequisite is **Node ≥ 22** (plus
-`cloudflared` if you want the skill to spin up a public relay for you).
-
-**Install as a plugin** (recommended — zero install):
-
-```text
-/plugin marketplace add gianlucamazza/agentroom
-/plugin install agentroom
-```
-
-Then in any session: ask "create an agentroom invite", "listen for agentroom messages", or
-"start an agentroom relay". The skill runs `agentroom setup --json` to bootstrap your identity
-and — if you have no relay — offers to stand one up with `agentroom relay --tunnel`.
-
-**Or via npm** (the same self-contained CLI):
-
-```bash
-npm install -g @gianlucamazza/agentroom     # or: npx @gianlucamazza/agentroom <command>
-```
+`cloudflared` if you want the skill to spin up a public relay for you). Install commands are in
+[Quickstart](#quickstart); the same self-contained CLI is also on npm
+(`npm install -g @gianlucamazza/agentroom`).
 
 **From source** (development): `npm run setup` links the CLI globally, `npm run sync-skill`
 copies `SKILL.md` to the local skill locations, and `npm run bundle:cli` rebuilds the committed

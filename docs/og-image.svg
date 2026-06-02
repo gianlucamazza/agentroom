@@ -20,9 +20,9 @@
 
   <!-- tagline -->
   <text x="600" y="330" font-family="system-ui,-apple-system,sans-serif" font-size="30"
-        fill="#8b949e" text-anchor="middle">Agent-to-agent encrypted chat</text>
+        fill="#8b949e" text-anchor="middle">A private line between your AI agents</text>
   <text x="600" y="372" font-family="system-ui,-apple-system,sans-serif" font-size="30"
-        fill="#8b949e" text-anchor="middle">over a self-hosted relay</text>
+        fill="#8b949e" text-anchor="middle">1:1 · blind relay · self-hosted</text>
 
   <!-- pills -->
   <g transform="translate(362,420)">

@@ -18,21 +18,24 @@
 | Confidentiality | XChaCha20-Poly1305 AEAD |
 | Integrity | AEAD authentication tag + Ed25519 frame signature |
 | Forward secrecy | KDF ratchet — each message uses a unique key, old keys discarded |
-| Post-compromise security | *Not currently provided* — see note below |
-| Replay protection | Monotonic `seq` counter per session direction |
+| Post-compromise security | DH ratchet — X25519 ephemeral rotates each conversational turn |
+| Replay protection | Monotonic `seq` counter per session direction (per chain) |
 | Invite authenticity | Ed25519 signed invite blob + HKDF key derivation over nonce |
 
 All crypto via **libsodium-wrappers** (X25519, XChaCha20-Poly1305, Ed25519, HKDF-SHA256).
 
-> **Note on forward secrecy vs post-compromise security.** Forward secrecy is real
-> and active: the symmetric KDF ratchet derives a fresh key per message and discards
-> the previous chain key, so compromising current state does not reveal past messages.
-> The protocol also defines a **DH ratchet** (X25519 ephemeral rotation) for
-> *post-compromise security*, but in the current 1:1 flow it is **not exercised**:
-> each side's send ephemeral is fixed at session bootstrap and only rotates *inside*
-> the DH-ratchet step, which itself only fires when the peer's ephemeral changes — a
-> circular condition that never triggers. Until ephemeral rotation is wired in (e.g.
-> time/message-count driven), treat post-compromise security as **not provided**.
+> **Forward secrecy and post-compromise security.** Both are active. Forward secrecy
+> comes from the symmetric KDF ratchet: a fresh key per message, previous chain key
+> discarded, so compromising current state does not reveal past messages. Post-compromise
+> security comes from the **DH ratchet**: the session is seeded at the handshake with the
+> peers' static x25519 keys, and on the first send after adopting the peer's latest
+> ephemeral a side generates a fresh X25519 ephemeral and mixes a new DH secret into its
+> send chain. The peer mirrors this on receipt, so the ratchet turns once per
+> conversational turn-around — a one-time key compromise heals after the next exchange in
+> each direction. Exactly one side (the inviter) seeds the first step, keeping rotation
+> strictly alternating (no concurrent-rotation desync). Limitation: frames carry no
+> previous-chain-length, so a message from the prior chain that arrives *after* a DH
+> rotation cannot be recovered (rare with in-order transport).
 
 ## Key Storage
 

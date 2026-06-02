@@ -127,19 +127,20 @@ describe("crypto: full E2E invite handshake simulation", () => {
     const alice = await generateKeypair();
     const bob = await generateKeypair();
     const { signed } = await createInvite(alice.ed25519_pk, alice.ed25519_sk, alice.x25519_pk, "wss://test.local/ws");
-    const { deriveSessionKeys, initRatchetSession, encryptMessage, decryptMessage } = await import("@agentroom/sdk");
+    const { deriveSessionKeys, SessionStore, encryptMessage, decryptMessage } = await import("@agentroom/sdk");
 
     const aliceKeys = await deriveSessionKeys(alice.x25519_sk, bob.x25519_pk, signed.blob.nonce, "inviter");
     const bobKeys   = await deriveSessionKeys(bob.x25519_sk, alice.x25519_pk, signed.blob.nonce, "invitee");
 
-    const aliceSession = await initRatchetSession(toBase64(bob.ed25519_pk), aliceKeys);
-    const bobSession   = await initRatchetSession(toBase64(alice.ed25519_pk), bobKeys);
+    const store = new SessionStore();
+    const aliceSession = await store.init(toBase64(bob.ed25519_pk), aliceKeys, { identity: alice, peerX25519Pk: bob.x25519_pk, initiateRatchet: true });
+    const bobSession   = await store.init(toBase64(alice.ed25519_pk), bobKeys, { identity: bob, peerX25519Pk: alice.x25519_pk, initiateRatchet: false });
 
     const plaintext = new TextEncoder().encode("hello from alice");
     const { ciphertext, nonce, ratchet_pk } = await encryptMessage(aliceSession, plaintext);
     const seq = aliceSession.sendSeq - 1;
 
-    const recovered = await decryptMessage(bobSession, ciphertext, nonce, seq, ratchet_pk, bob.x25519_sk);
+    const recovered = await decryptMessage(bobSession, ciphertext, nonce, seq, ratchet_pk);
     expect(new TextDecoder().decode(recovered)).toBe("hello from alice");
   });
 
@@ -216,21 +217,21 @@ describe("crypto: full E2E invite handshake simulation", () => {
     const alice = await generateKeypair();
     const bob = await generateKeypair();
     const { signed } = await createInvite(alice.ed25519_pk, alice.ed25519_sk, alice.x25519_pk, "wss://test.local/ws");
-    const { deriveSessionKeys, initRatchetSession, encryptMessage, decryptMessage } = await import("@agentroom/sdk");
+    const { deriveSessionKeys, SessionStore, encryptMessage, decryptMessage } = await import("@agentroom/sdk");
 
     const aliceKeys = await deriveSessionKeys(alice.x25519_sk, bob.x25519_pk, signed.blob.nonce, "inviter");
     const bobKeys   = await deriveSessionKeys(bob.x25519_sk, alice.x25519_pk, signed.blob.nonce, "invitee");
 
-    const aliceSession = await initRatchetSession("alice-peer", aliceKeys);
-    const bobSession   = await initRatchetSession("bob-peer",   bobKeys);
+    const store = new SessionStore();
+    const aliceSession = await store.init("alice-peer", aliceKeys, { identity: alice, peerX25519Pk: bob.x25519_pk, initiateRatchet: true });
+    const bobSession   = await store.init("bob-peer",   bobKeys, { identity: bob, peerX25519Pk: alice.x25519_pk, initiateRatchet: false });
 
     const msg = new TextEncoder().encode("first");
     const { ciphertext, nonce, ratchet_pk } = await encryptMessage(aliceSession, msg);
     const seq = aliceSession.sendSeq - 1;
 
-    await decryptMessage(bobSession, ciphertext, nonce, seq, undefined, bob.x25519_sk);
+    await decryptMessage(bobSession, ciphertext, nonce, seq, ratchet_pk);
     // replay without ratchet_pk → caught by recvSeq check
     await expect(decryptMessage(bobSession, ciphertext, nonce, seq)).rejects.toThrow("replay");
-    void ratchet_pk;
   });
 });

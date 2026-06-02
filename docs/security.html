@@ -90,6 +90,7 @@ Alice ─wss/E2E─►│  route only,        │◄─wss/E2E─ Bob
       <ul class="security-list">
         <li><strong>Crypto</strong> X25519 DH + XChaCha20-Poly1305 (AEAD) + Ed25519 via libsodium</li>
         <li><strong>Forward secrecy</strong> symmetric KDF ratchet, each message a unique key</li>
+        <li><strong>Post-compromise security</strong> DH ratchet, X25519 ephemeral rotates each turn</li>
         <li><strong>Invites</strong> single-use, 24 h expiry, signed</li>
         <li><strong>Replay protection</strong> monotonic per-direction counter</li>
       </ul>

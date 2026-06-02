@@ -8722,9 +8722,10 @@ function serializeSession(state) {
       x25519_pk: toBase64(state.sendEphemeral.x25519_pk),
       x25519_sk: toBase64(state.sendEphemeral.x25519_sk)
     },
-    recvEphemeralPk: state.recvEphemeralPk ? toBase64(state.recvEphemeralPk) : null,
+    recvEphemeralPk: toBase64(state.recvEphemeralPk),
     sendSeq: state.sendSeq,
     recvSeq: state.recvSeq,
+    needsSendDhStep: state.needsSendDhStep,
     skippedMessageKeys: [...state.skippedMessageKeys.entries()].map(
       ([k, v]) => [k, { key: toBase64(v.key), addedAt: v.addedAt }]
     ),
@@ -8747,9 +8748,10 @@ function deserializeSession(json2) {
       x25519_pk: fromBase64(s.sendEphemeral.x25519_pk),
       x25519_sk: fromBase64(s.sendEphemeral.x25519_sk)
     },
-    recvEphemeralPk: s.recvEphemeralPk ? fromBase64(s.recvEphemeralPk) : null,
+    recvEphemeralPk: fromBase64(s.recvEphemeralPk),
     sendSeq: s.sendSeq,
     recvSeq: s.recvSeq,
+    needsSendDhStep: s.needsSendDhStep,
     skippedMessageKeys: skippedMap,
     lastUsedAt: s.lastUsedAt ?? Date.now()
   };
@@ -8770,16 +8772,26 @@ var SessionStore = class {
   list() {
     return [...this.map.keys()];
   }
-  async init(peerPk, bootstrapKeys) {
-    const sendEphemeral = await generateKeypair();
+  /**
+   * Initialize a ratchet session, seeding the DH ratchet so post-compromise security
+   * is active from the first message:
+   *  - sendEphemeral = our static identity keypair (its x25519 pub is what the peer
+   *    knows for us from the invite), recvEphemeralPk = peer's static x25519 pub.
+   *    These mutually-known keys define the first DH ratchet pair, so send and recv
+   *    derivations stay symmetric without an asymmetric "first contact" branch.
+   *  - initiateRatchet=true on exactly ONE side (the inviter) seeds needsSendDhStep,
+   *    so the first DH step is one-sided → strict alternation, no concurrent rotation.
+   */
+  async init(peerPk, bootstrapKeys, seed) {
     const session = {
       peerPk,
       sendChainKey: bootstrapKeys.sendKey,
       recvChainKey: bootstrapKeys.recvKey,
-      sendEphemeral,
-      recvEphemeralPk: null,
+      sendEphemeral: seed.identity,
+      recvEphemeralPk: seed.peerX25519Pk,
       sendSeq: 0,
       recvSeq: -1,
+      needsSendDhStep: seed.initiateRatchet,
       skippedMessageKeys: /* @__PURE__ */ new Map(),
       lastUsedAt: Date.now()
     };
@@ -8787,8 +8799,16 @@ var SessionStore = class {
     return session;
   }
 };
-var defaultStore = new SessionStore();
 async function encryptMessage(session, plaintext) {
+  if (session.needsSendDhStep && session.recvEphemeralPk !== null) {
+    const newEph = await generateKeypair();
+    const dhOut = await dhSharedSecret(newEph.x25519_sk, session.recvEphemeralPk);
+    const { chainKey } = await ratchetStep(session.sendChainKey, dhOut);
+    session.sendChainKey = chainKey;
+    session.sendEphemeral = newEph;
+    session.sendSeq = 0;
+    session.needsSendDhStep = false;
+  }
   const msgKey = await messageKey(session.sendChainKey, session.sendSeq);
   const { ciphertext, nonce } = await seal(plaintext, msgKey);
   const { chainKey: nextChainKey } = await ratchetStep(session.sendChainKey, msgKey);
@@ -8801,15 +8821,12 @@ async function encryptMessage(session, plaintext) {
     ratchet_pk: toBase64(session.sendEphemeral.x25519_pk)
   };
 }
-async function decryptMessage(session, ciphertext, nonce, seq, ratchet_pk_b64, our_dh_sk) {
+async function decryptMessage(session, ciphertext, nonce, seq, ratchet_pk_b64) {
   const skipKey = `${ratchet_pk_b64 ?? ""}:${seq}`;
   const skipped = session.skippedMessageKeys.get(skipKey);
   if (skipped) {
     session.skippedMessageKeys.delete(skipKey);
     return open(fromBase64(ciphertext), fromBase64(nonce), skipped.key);
-  }
-  if (seq <= session.recvSeq) {
-    throw new Error(`replay detected: seq ${seq} <= last seen ${session.recvSeq}`);
   }
   const snapshot2 = {
     recvChainKey: session.recvChainKey,
@@ -8817,30 +8834,26 @@ async function decryptMessage(session, ciphertext, nonce, seq, ratchet_pk_b64, o
     sendChainKey: session.sendChainKey,
     sendEphemeral: session.sendEphemeral,
     sendSeq: session.sendSeq,
-    recvSeq: session.recvSeq
+    recvSeq: session.recvSeq,
+    needsSendDhStep: session.needsSendDhStep
   };
   try {
-    if (ratchet_pk_b64 && our_dh_sk && session.recvEphemeralPk !== null) {
+    if (ratchet_pk_b64) {
       const prevPkB64 = toBase64(session.recvEphemeralPk);
       if (ratchet_pk_b64 !== prevPkB64) {
-        await storeSkippedKeys(session, prevPkB64, seq);
         const newPeerPk = fromBase64(ratchet_pk_b64);
-        const dhOut = await dhSharedSecret(our_dh_sk, newPeerPk);
+        const dhOut = await dhSharedSecret(session.sendEphemeral.x25519_sk, newPeerPk);
         const { chainKey: newRecvChain } = await ratchetStep(session.recvChainKey, dhOut);
         session.recvChainKey = newRecvChain;
         session.recvEphemeralPk = newPeerPk;
         session.recvSeq = -1;
-        const newSendEph = await generateKeypair();
-        const dhOut2 = await dhSharedSecret(newSendEph.x25519_sk, newPeerPk);
-        const { chainKey: newSendChain } = await ratchetStep(session.sendChainKey, dhOut2);
-        session.sendChainKey = newSendChain;
-        session.sendEphemeral = newSendEph;
-        session.sendSeq = 0;
+        session.needsSendDhStep = true;
       }
-    } else if (ratchet_pk_b64 && session.recvEphemeralPk === null) {
-      session.recvEphemeralPk = fromBase64(ratchet_pk_b64);
     }
-    const peerPkForSkip = ratchet_pk_b64 ?? (session.recvEphemeralPk ? toBase64(session.recvEphemeralPk) : "");
+    if (seq <= session.recvSeq) {
+      throw new Error(`replay detected: seq ${seq} <= last seen ${session.recvSeq}`);
+    }
+    const peerPkForSkip = ratchet_pk_b64 ?? toBase64(session.recvEphemeralPk);
     if (seq > session.recvSeq + 1) {
       await storeSkippedKeys(session, peerPkForSkip, seq);
     }
@@ -8858,6 +8871,7 @@ async function decryptMessage(session, ciphertext, nonce, seq, ratchet_pk_b64, o
     session.sendEphemeral = snapshot2.sendEphemeral;
     session.sendSeq = snapshot2.sendSeq;
     session.recvSeq = snapshot2.recvSeq;
+    session.needsSendDhStep = snapshot2.needsSendDhStep;
     throw e;
   }
 }
@@ -9222,8 +9236,7 @@ var AgentroomClient = class {
       routed.ciphertext,
       routed.nonce,
       routed.seq,
-      routed.ratchet_pk,
-      this.identity?.x25519_sk
+      routed.ratchet_pk
     );
     saveSession(session.peerPk, session, this.home);
     const text = new TextDecoder().decode(plainBytes);
@@ -9244,7 +9257,11 @@ var AgentroomClient = class {
       initPayload.nonce,
       "inviter"
     );
-    const session = await this.store.init(routed.from, bootstrapKeys);
+    const session = await this.store.init(routed.from, bootstrapKeys, {
+      identity: this.identity,
+      peerX25519Pk: fromBase64(initPayload.x25519_pk),
+      initiateRatchet: true
+    });
     saveSession(session.peerPk, session, this.home);
     const ackPlain = new TextEncoder().encode(JSON.stringify({ ack: initPayload.nonce }));
     const { ciphertext: ackCiphertext, nonce: ackNonceOut } = await seal(ackPlain, bootstrapKeys.sendKey);
@@ -9308,7 +9325,11 @@ var AgentroomClient = class {
       blob.nonce,
       "invitee"
     );
-    const session = await this.store.init(blob.inviter_ed25519_pk, bootstrapKeys);
+    const session = await this.store.init(blob.inviter_ed25519_pk, bootstrapKeys, {
+      identity: this.identity,
+      peerX25519Pk: fromBase64(blob.inviter_x25519_pk),
+      initiateRatchet: false
+    });
     saveSession(session.peerPk, session, this.home);
     const initPayload = JSON.stringify({
       x25519_pk: toBase64(this.identity.x25519_pk),

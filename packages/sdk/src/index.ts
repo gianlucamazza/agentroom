@@ -3,7 +3,6 @@ export { loadOrCreateIdentity, identityPath, sessionsDir, loadAllSessions, saveS
 export {
   SessionStore,
   deriveSessionKeys,
-  initRatchetSession,
   encryptMessage,
   decryptMessage,
   type RatchetState,

@@ -191,24 +191,36 @@ sendChainKey = KDF(sendChainKey, msgKey)      // advance chain (forward secrecy)
 
 Old keys are discarded after use — prior messages cannot be decrypted with current state.
 
-### DH Ratchet (on peer pk change)
+### DH Ratchet (post-compromise security)
 
-Fires when `ratchet_pk` changes AND we have previously received a message (non-null `recvEphemeralPk`):
+The session is **seeded at the handshake**: each side sets its send ephemeral to its own
+static x25519 keypair and `recvEphemeralPk` to the peer's static x25519 pub (both already
+known from the invite). Exactly one side — the inviter — is flagged to initiate
+(`needsSendDhStep`), so the first DH step is one-sided and rotation stays strictly
+alternating (no concurrent-rotation desync).
+
+**Send step** — performed on the first send after adopting the peer's latest ephemeral
+(`needsSendDhStep` set by a recv step):
 
 ```
-dhOut          = X25519(our_dh_sk, new_ratchet_pk)
-recvChainKey   = KDF(recvChainKey, dhOut)        // new recv chain
-sendEphemeral  = generateKeypair()               // rotate our ephemeral
-sendChainKey   = KDF(sendChainKey, X25519(new_sendEph_sk, new_ratchet_pk))
+newSendEph     = generateKeypair()                              // fresh X25519 ephemeral
+sendChainKey   = KDF(sendChainKey, X25519(newSendEph_sk, recvEphemeralPk))
+ratchet_pk     = newSendEph.x25519_pk                           // advertised on the frame
 ```
 
-> **Status: defined but not currently exercised.** `ratchet_pk` is the sender's
-> send ephemeral, which is fixed at bootstrap and only rotates *inside* this DH
-> step — which itself only fires when the peer's `ratchet_pk` changes. That
-> circular dependency means the DH ratchet never triggers in the normal 1:1
-> flow, so **post-compromise security is not provided today** (forward secrecy
-> via the symmetric ratchet above still holds). Activating it requires driving
-> ephemeral rotation independently (e.g. by elapsed time or message count).
+**Recv step** — performed when an inbound `ratchet_pk` differs from the stored one:
+
+```
+recvChainKey   = KDF(recvChainKey, X25519(our_current_sendEph_sk, new_ratchet_pk))
+recvEphemeralPk = new_ratchet_pk
+recvSeq        = -1                                             // new chain, counter resets
+needsSendDhStep = true                                          // our next send rotates
+```
+
+X25519 symmetry makes the send and recv derivations agree. The ratchet turns once per
+conversational turn-around, so a one-time key compromise heals after the next exchange in
+each direction. Frames carry no previous-chain-length (PN), so a prior-chain message that
+arrives *after* a rotation is not recoverable (rare with in-order transport).
 
 ### Out-of-order delivery
 

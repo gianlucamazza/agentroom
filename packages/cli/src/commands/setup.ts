@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, chmodSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync, rmSync, chmodSync } from "node:fs";
 import path from "node:path";
-import { loadOrCreateIdentity, identityPath } from "@agentroom/sdk";
+import { loadOrCreateIdentity, identityPath, sessionsDir } from "@agentroom/sdk";
 import { toBase64 } from "@agentroom/protocol";
 import { detectCloudflared } from "../cloudflared.js";
 import { EXIT_USAGE } from "../exitcodes.js";
@@ -12,7 +12,9 @@ export async function cmdSetup(args: string[]) {
   const cwdIdx = args.indexOf("--cwd");
   const cwd = cwdIdx >= 0 ? (args[cwdIdx + 1] ?? process.cwd()) : process.cwd();
   const homeIdx = args.indexOf("--home");
-  const home = homeIdx >= 0 ? args[homeIdx + 1] : process.env["AGENTROOM_HOME"];
+  // AGENTROOM_HOME env fallback is resolved centrally in configBase(); pass the
+  // explicit --home arg through (undefined → env or default).
+  const home = homeIdx >= 0 ? args[homeIdx + 1] : undefined;
 
   // 1. Check Node >= 22
   const nodeMajor = parseInt(process.versions.node.split(".")[0] ?? "0", 10);
@@ -58,6 +60,9 @@ export async function cmdSetup(args: string[]) {
   if (forceMode && existsSync(idPath)) {
     if (!jsonMode) console.warn(`warning: --force: removing existing identity at ${idPath}`);
     unlinkSync(idPath);
+    // Sessions are ratchet states tied to the discarded identity's keys — they
+    // can't decrypt anything under the new key, so drop them for a clean rotation.
+    rmSync(sessionsDir(home), { recursive: true, force: true });
   }
   const isNew = !existsSync(idPath);
   const identity = await loadOrCreateIdentity(home);

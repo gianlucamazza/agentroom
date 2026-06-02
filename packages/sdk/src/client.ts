@@ -323,7 +323,6 @@ export class AgentroomClient {
       routed.nonce,
       routed.seq,
       routed.ratchet_pk,
-      this.identity?.x25519_sk,
     );
     // Persist updated session state
     saveSession(session.peerPk, session, this.home);
@@ -352,7 +351,12 @@ export class AgentroomClient {
       "inviter",
     );
 
-    const session = await this.store.init(routed.from, bootstrapKeys);
+    // Seed the DH ratchet (PCS). We are the inviter → initiate the first DH step.
+    const session = await this.store.init(routed.from, bootstrapKeys, {
+      identity: this.identity,
+      peerX25519Pk: fromBase64(initPayload.x25519_pk),
+      initiateRatchet: true,
+    });
     saveSession(session.peerPk, session, this.home);
 
     const ackPlain = new TextEncoder().encode(JSON.stringify({ ack: initPayload.nonce }));
@@ -425,7 +429,13 @@ export class AgentroomClient {
       "invitee",
     );
 
-    const session = await this.store.init(blob.inviter_ed25519_pk, bootstrapKeys);
+    // Seed the DH ratchet (PCS). We are the invitee → do NOT initiate (the inviter does),
+    // which keeps the first DH step one-sided and rotation strictly alternating.
+    const session = await this.store.init(blob.inviter_ed25519_pk, bootstrapKeys, {
+      identity: this.identity,
+      peerX25519Pk: fromBase64(blob.inviter_x25519_pk),
+      initiateRatchet: false,
+    });
     saveSession(session.peerPk, session, this.home);
 
     const initPayload = JSON.stringify({

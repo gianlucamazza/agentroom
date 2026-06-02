@@ -38,18 +38,25 @@ export async function deriveSessionKeys(
 // ─────────────────────────────────────────────
 // Symmetric KDF Ratchet + DH Ratchet state (v2)
 //
-// Model:
-//  • Each message advances the send/recv chain key: forward secrecy (symmetric ratchet)
-//  • ratchet_pk carries sender's current X25519 ephemeral; receiver records it for DH step
-//  • Full DH ratchet step (post-compromise security) fires when peer's ratchet_pk changes
-//    AND we have previously received at least one message from them (so we have their real pk)
+// Model (Signal-style Double Ratchet):
+//  • Each message advances the send/recv chain key: forward secrecy (symmetric ratchet).
+//  • ratchet_pk carries the sender's current X25519 ephemeral pub.
+//  • DH ratchet (post-compromise security): a side does a *send* DH step — generate a
+//    fresh ephemeral, mix DH(newEph, peerEph) into the send chain — on its first send
+//    after adopting a new peer ephemeral (needsSendDhStep). The peer performs the matching
+//    *recv* DH step when it sees the changed ratchet_pk. So the ratchet turns once per
+//    conversational turn-around, giving PCS at that granularity.
 //
-// NOTE: the DH ratchet below is defined but NOT currently exercised. sendEphemeral
-// is fixed at bootstrap and only rotates *inside* the DH step (see decryptMessage),
-// which only fires when the peer's ratchet_pk changes — a circular condition that
-// never triggers in the normal 1:1 flow. So forward secrecy (symmetric ratchet) is
-// active, but post-compromise security is not provided until ephemeral rotation is
-// driven independently (time/message-count). See SECURITY.md / PROTOCOL.md.
+// Bootstrapping the alternation (no wire change): at session init both sides seed
+// recvEphemeralPk = peer's static x25519 pub and sendEphemeral = own static identity
+// keypair (both already known from the invite handshake), eliminating a "first contact"
+// branch that would otherwise break send/recv symmetry. Exactly one side (the inviter)
+// seeds needsSendDhStep=true, so the very first DH step is one-sided — this rules out the
+// concurrent-rotation hazard (both sides ratcheting against each other's stale key).
+//
+// Legacy sessions (created before seeding, deserialized with needsSendDhStep=false and a
+// random/absent ephemeral) never rotate: they keep working with symmetric forward secrecy
+// only, no PCS. See SECURITY.md / PROTOCOL.md.
 // ─────────────────────────────────────────────
 
 export interface RatchetState {
@@ -60,10 +67,13 @@ export interface RatchetState {
 
   // DH ratchet fields
   sendEphemeral: AgentKeypair;
-  recvEphemeralPk: Bytes | null;  // null = not yet received any message from peer
+  recvEphemeralPk: Bytes;  // peer's current ratchet ephemeral pub (seeded at init)
 
   sendSeq: number;
   recvSeq: number;
+
+  /** True after a recv DH step: our next send must perform a send DH step (rotate ephemeral). */
+  needsSendDhStep: boolean;
 
   // Out-of-order buffer: "peerEphPk_b64:seq" → { key, addedAt }
   skippedMessageKeys: Map<string, { key: Bytes; addedAt: number }>;
@@ -81,9 +91,10 @@ interface SerializedRatchetState {
   sendChainKey: string;
   recvChainKey: string;
   sendEphemeral: { ed25519_pk: string; ed25519_sk: string; x25519_pk: string; x25519_sk: string };
-  recvEphemeralPk: string | null;
+  recvEphemeralPk: string;
   sendSeq: number;
   recvSeq: number;
+  needsSendDhStep: boolean;
   skippedMessageKeys: Array<[string, { key: string; addedAt: number }]>;
   lastUsedAt: number;
 }
@@ -99,9 +110,10 @@ export function serializeSession(state: RatchetState): string {
       x25519_pk: toBase64(state.sendEphemeral.x25519_pk),
       x25519_sk: toBase64(state.sendEphemeral.x25519_sk),
     },
-    recvEphemeralPk: state.recvEphemeralPk ? toBase64(state.recvEphemeralPk) : null,
+    recvEphemeralPk: toBase64(state.recvEphemeralPk),
     sendSeq: state.sendSeq,
     recvSeq: state.recvSeq,
+    needsSendDhStep: state.needsSendDhStep,
     skippedMessageKeys: [...state.skippedMessageKeys.entries()].map(
       ([k, v]) => [k, { key: toBase64(v.key), addedAt: v.addedAt }],
     ),
@@ -125,9 +137,10 @@ export function deserializeSession(json: string): RatchetState {
       x25519_pk: fromBase64(s.sendEphemeral.x25519_pk),
       x25519_sk: fromBase64(s.sendEphemeral.x25519_sk),
     },
-    recvEphemeralPk: s.recvEphemeralPk ? fromBase64(s.recvEphemeralPk) : null,
+    recvEphemeralPk: fromBase64(s.recvEphemeralPk),
     sendSeq: s.sendSeq,
     recvSeq: s.recvSeq,
+    needsSendDhStep: s.needsSendDhStep,
     skippedMessageKeys: skippedMap,
     lastUsedAt: s.lastUsedAt ?? Date.now(),
   };
@@ -157,16 +170,30 @@ export class SessionStore {
     return [...this.map.keys()];
   }
 
-  async init(peerPk: string, bootstrapKeys: SessionKeys): Promise<RatchetState> {
-    const sendEphemeral = await generateKeypair();
+  /**
+   * Initialize a ratchet session, seeding the DH ratchet so post-compromise security
+   * is active from the first message:
+   *  - sendEphemeral = our static identity keypair (its x25519 pub is what the peer
+   *    knows for us from the invite), recvEphemeralPk = peer's static x25519 pub.
+   *    These mutually-known keys define the first DH ratchet pair, so send and recv
+   *    derivations stay symmetric without an asymmetric "first contact" branch.
+   *  - initiateRatchet=true on exactly ONE side (the inviter) seeds needsSendDhStep,
+   *    so the first DH step is one-sided → strict alternation, no concurrent rotation.
+   */
+  async init(
+    peerPk: string,
+    bootstrapKeys: SessionKeys,
+    seed: { identity: AgentKeypair; peerX25519Pk: Bytes; initiateRatchet: boolean },
+  ): Promise<RatchetState> {
     const session: RatchetState = {
       peerPk,
       sendChainKey: bootstrapKeys.sendKey,
       recvChainKey: bootstrapKeys.recvKey,
-      sendEphemeral,
-      recvEphemeralPk: null,
+      sendEphemeral: seed.identity,
+      recvEphemeralPk: seed.peerX25519Pk,
       sendSeq: 0,
       recvSeq: -1,
+      needsSendDhStep: seed.initiateRatchet,
       skippedMessageKeys: new Map(),
       lastUsedAt: Date.now(),
     };
@@ -175,33 +202,26 @@ export class SessionStore {
   }
 }
 
-// ── Module-level backward-compat shim (used by session.test.ts and identity.ts) ──
-const defaultStore = new SessionStore();
-
-export function getSession(peerPk: string): RatchetState | undefined {
-  return defaultStore.get(peerPk);
-}
-
-export function setSession(peerPk: string, session: RatchetState): void {
-  defaultStore.set(peerPk, session);
-}
-
-export function listSessions(): string[] {
-  return defaultStore.list();
-}
-
-export async function initRatchetSession(
-  peerPk: string,
-  bootstrapKeys: SessionKeys,
-): Promise<RatchetState> {
-  return defaultStore.init(peerPk, bootstrapKeys);
-}
-
 /** Encrypt a message, advancing the send chain (symmetric ratchet). */
 export async function encryptMessage(
   session: RatchetState,
   plaintext: Bytes,
 ): Promise<{ ciphertext: string; nonce: string; ratchet_pk: string }> {
+  // DH ratchet (post-compromise security): on the first send after we adopted a new
+  // peer ephemeral, generate a fresh sending ephemeral and mix DH(newEph, peerEph) into
+  // the send chain. The peer runs the matching recv DH step when it sees the changed
+  // ratchet_pk. Only fires when seeded (needsSendDhStep) and we know the peer's current
+  // ephemeral; strict alternation (single initiator) precludes concurrent rotation.
+  if (session.needsSendDhStep && session.recvEphemeralPk !== null) {
+    const newEph = await generateKeypair();
+    const dhOut = await dhSharedSecret(newEph.x25519_sk, session.recvEphemeralPk);
+    const { chainKey } = await ratchetStep(session.sendChainKey, dhOut);
+    session.sendChainKey = chainKey;
+    session.sendEphemeral = newEph;
+    session.sendSeq = 0;
+    session.needsSendDhStep = false;
+  }
+
   const msgKey = await messageKey(session.sendChainKey, session.sendSeq);
   const { ciphertext, nonce } = await seal(plaintext, msgKey);
 
@@ -221,8 +241,9 @@ export async function encryptMessage(
 /**
  * Decrypt a message.
  * - Checks skipped message keys for out-of-order delivery
- * - Performs DH ratchet when peer's ratchet_pk changes (forward secrecy extension)
- * - our_dh_sk: our current X25519 private key for DH ratchet (optional; needed for DH step)
+ * - Performs a recv DH ratchet step when the peer's ratchet_pk changes (post-compromise
+ *   security): derives the new recv chain from DH(our current sending ephemeral, peer's
+ *   new ephemeral) and flags our next send to rotate (needsSendDhStep).
  *
  * C3 fix: state mutations are rolled back if open() fails, preventing session corruption
  * on malformed/replayed messages.
@@ -233,7 +254,6 @@ export async function decryptMessage(
   nonce: string,
   seq: number,
   ratchet_pk_b64?: string,
-  our_dh_sk?: Bytes,
 ): Promise<Bytes> {
   // Check skipped message keys (out-of-order)
   const skipKey = `${ratchet_pk_b64 ?? ""}:${seq}`;
@@ -241,11 +261,6 @@ export async function decryptMessage(
   if (skipped) {
     session.skippedMessageKeys.delete(skipKey);
     return open(fromBase64(ciphertext), fromBase64(nonce), skipped.key);
-  }
-
-  // Replay check
-  if (seq <= session.recvSeq) {
-    throw new Error(`replay detected: seq ${seq} <= last seen ${session.recvSeq}`);
   }
 
   // ── Snapshot for rollback (C3 fix) ───────────────────────────────────────
@@ -258,39 +273,39 @@ export async function decryptMessage(
     sendEphemeral:   session.sendEphemeral,
     sendSeq:         session.sendSeq,
     recvSeq:         session.recvSeq,
+    needsSendDhStep: session.needsSendDhStep,
   };
 
   try {
-    // DH ratchet step: only when peer changes their ratchet_pk AND we've seen them before
-    if (ratchet_pk_b64 && our_dh_sk && session.recvEphemeralPk !== null) {
+    // Recv DH ratchet step: the peer advertised a new ratchet_pk (its ephemeral rotated).
+    if (ratchet_pk_b64) {
       const prevPkB64 = toBase64(session.recvEphemeralPk);
       if (ratchet_pk_b64 !== prevPkB64) {
-        // Store skipped keys from current recv chain before ratcheting
-        await storeSkippedKeys(session, prevPkB64, seq);
-
+        // NOTE: we do not drain leftover keys from the previous recv chain here — the
+        // frame carries no "previous chain length" (PN), so messages from the prior chain
+        // that arrive AFTER this rotation cannot be recovered (rare with in-order
+        // transport). Skipped keys already buffered before the rotation stay retrievable.
         const newPeerPk = fromBase64(ratchet_pk_b64);
-        const dhOut = await dhSharedSecret(our_dh_sk, newPeerPk);
+        // DH against OUR current sending ephemeral — the key the sender DH'd against.
+        const dhOut = await dhSharedSecret(session.sendEphemeral.x25519_sk, newPeerPk);
         const { chainKey: newRecvChain } = await ratchetStep(session.recvChainKey, dhOut);
         session.recvChainKey = newRecvChain;
         session.recvEphemeralPk = newPeerPk;
         // Reset recv counter for the new chain
         session.recvSeq = -1;
-
-        // Advance our own send ephemeral for the next send
-        const newSendEph = await generateKeypair();
-        const dhOut2 = await dhSharedSecret(newSendEph.x25519_sk, newPeerPk);
-        const { chainKey: newSendChain } = await ratchetStep(session.sendChainKey, dhOut2);
-        session.sendChainKey = newSendChain;
-        session.sendEphemeral = newSendEph;
-        session.sendSeq = 0;
+        // Defer our own ephemeral rotation to the next send (lazy, keeps alternation strict).
+        session.needsSendDhStep = true;
       }
-    } else if (ratchet_pk_b64 && session.recvEphemeralPk === null) {
-      // First message from peer: record their ratchet_pk (no DH step yet)
-      session.recvEphemeralPk = fromBase64(ratchet_pk_b64);
+    }
+
+    // Replay check — AFTER the DH step so a rotation (which resets recvSeq for the new
+    // chain) doesn't make a legitimate seq look like a replay of the previous chain.
+    if (seq <= session.recvSeq) {
+      throw new Error(`replay detected: seq ${seq} <= last seen ${session.recvSeq}`);
     }
 
     // Store skipped keys if seq > recvSeq + 1 (out-of-order: advance chain to seq)
-    const peerPkForSkip = ratchet_pk_b64 ?? (session.recvEphemeralPk ? toBase64(session.recvEphemeralPk) : "");
+    const peerPkForSkip = ratchet_pk_b64 ?? toBase64(session.recvEphemeralPk);
     if (seq > session.recvSeq + 1) {
       await storeSkippedKeys(session, peerPkForSkip, seq);
     }
@@ -314,6 +329,7 @@ export async function decryptMessage(
     session.sendEphemeral   = snapshot.sendEphemeral;
     session.sendSeq         = snapshot.sendSeq;
     session.recvSeq         = snapshot.recvSeq;
+    session.needsSendDhStep = snapshot.needsSendDhStep;
     throw e;
   }
 }

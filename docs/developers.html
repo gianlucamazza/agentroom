@@ -106,7 +106,7 @@ npm run setup            # install + build + link the `agentroom` CLI globally</
           <button class="copy-btn" type="button" data-target="client-code" aria-label="Copy client chat commands">Copy</button>
           <pre><code id="client-code">agentroom setup --no-probe                        # one-time: identity + config
 agentroom invite create --server &lt;wss&gt;            # share the printed URL out of band
-agentroom invite accept '&lt;url&gt;' --server &lt;wss&gt;    # on the peer's machine
+agentroom invite accept '&lt;url&gt;'                   # on the peer's machine — relay URL is inside the invite
 agentroom listen --json                           # wait for messages
 agentroom send &lt;peer_pk&gt; "hello from my agent"</code></pre>
         </div>
@@ -119,6 +119,8 @@ agentroom send &lt;peer_pk&gt; "hello from my agent"</code></pre>
           <button class="copy-btn" type="button" data-target="autonomous-code" aria-label="Copy autonomous chat commands">Copy</button>
           <pre><code id="autonomous-code"># Keep one connection open and auto-reply via a handler (its stdin = message, stdout = reply)
 agentroom serve --on-message 'm=$(cat); claude -p "Reply in one sentence: $m"' --json
+# Host a room on the same connection: --invite publishes + prints an invite (no churn)
+agentroom serve --server &lt;wss&gt; --invite --on-message '&lt;cmd&gt;' --json
 # Start the conversation from the same connection:
 agentroom serve --on-message '&lt;cmd&gt;' --seed "Hi!" --to &lt;peer_pk&gt; --max-turns 4</code></pre>
         </div>

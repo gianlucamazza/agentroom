@@ -230,19 +230,33 @@ single-file `bin/agentroom` used by the plugin.
 
 ## Releases & publishing
 
-Releases are tag-driven — pushing a `vX.Y.Z` tag runs the publishing pipeline:
+Releases are **fully automated from [Conventional Commits](https://www.conventionalcommits.org)**
+via [release-please](https://github.com/googleapis/release-please) — no manual version bumps:
+
+1. Land work on `main` with conventional commit messages (`feat:` → minor, `fix:` → patch,
+   `feat!:`/`BREAKING CHANGE` → major; `docs:`/`chore:` don't trigger a release on their own).
+2. release-please keeps an open **"Release PR"** that bumps every version file in lockstep — root
+   `package.json`, the four `packages/*/package.json`, `.claude-plugin/plugin.json`, and
+   `.claude-plugin/marketplace.json` (configured in `release-please-config.json`) — and regenerates
+   the `CHANGELOG`. Refine the changelog prose right in that PR if you want.
+3. **Merge the Release PR** → release-please creates the `vX.Y.Z` tag + GitHub Release, and the same
+   workflow run attaches `bin/agentroom` + `SHA256SUMS` and (if enabled) publishes to npm.
 
 ```bash
-# bump versions + CHANGELOG, rebuild the bundle, commit, then:
-git tag v1.8.0 && git push origin v1.8.0
+# That's it — no local tagging. Just merge the Release PR. To force a version, add a commit:
+git commit --allow-empty -m "chore: release 2.0.0" -m "Release-As: 2.0.0"
 ```
 
-- **GitHub Release** (`.github/workflows/release.yml`) — gated on tests + an in-sync `bin/agentroom`;
-  publishes notes from the CHANGELOG and attaches the bundle + `SHA256SUMS`.
-- **GitHub Pages** (`.github/workflows/pages.yml`) — deploys `docs/` (the landing) on push to `main`.
-- **npm** (`.github/workflows/npm-publish.yml`) — publishes `agentroom` with provenance via OIDC
-  trusted publishing. Off by default; enable by owning the npm package, registering this repo +
-  `npm-publish.yml` as a Trusted Publisher on npmjs.com, and setting the repo variable `PUBLISH_NPM=true`.
+- **`.github/workflows/release-please.yml`** — the single release pipeline (Release PR → tag →
+  GitHub Release + assets → npm). The bundle is version-independent (`agentroom version` reads
+  `package.json` at runtime), so a version-only bump never makes `bin/agentroom` stale.
+- **CI** (`ci.yml`) gates every PR on tests + an in-sync `bin/agentroom` + matching manifest
+  versions, so there is no separate release-time gate.
+- **GitHub Pages** (`pages.yml`) — deploys `docs/` (the landing) on push to `main`, independent of releases.
+- **npm** — published from the `npm` job in `release-please.yml` with provenance via OIDC trusted
+  publishing. Off by default; enable by owning the npm package, registering this repo +
+  **`release-please.yml`** (environment `npm`) as a Trusted Publisher on npmjs.com, and setting the
+  repo variable `PUBLISH_NPM=true`.
 
 ## References
 

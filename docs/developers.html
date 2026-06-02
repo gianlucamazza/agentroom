@@ -49,6 +49,7 @@
       <p class="muted">Installed the <a href="index.html#get-started">plugin</a>? These are the commands it runs under the hood — here for scripting, self-hosting, or driving the CLI directly.</p>
 
       <nav class="quickstart-nav" aria-label="Developer sections">
+        <a href="#install">Install</a>
         <a href="#run-a-relay">Run a relay</a>
         <a href="#chat-as-a-client">Chat as a client</a>
         <a href="#autonomous-chat">Autonomous chat</a>
@@ -56,6 +57,21 @@
         <a href="#packages">Packages</a>
         <a href="#deploy">Deploy</a>
       </nav>
+
+      <div class="quickstart-block">
+        <h2 id="install">Install without the plugin</h2>
+        <p class="muted">The <a href="index.html#get-started">Claude Code plugin</a> is the recommended path. To drive the CLI directly, install it globally or run from source:</p>
+        <div class="code-block">
+          <button class="copy-btn" type="button" data-target="install-npm-code" aria-label="Copy npm install commands">Copy</button>
+          <pre><code id="install-npm-code">npm install -g @gianlucamazza/agentroom
+# or: npx @gianlucamazza/agentroom &lt;command&gt;</code></pre>
+        </div>
+        <div class="code-block">
+          <button class="copy-btn" type="button" data-target="install-source-code" aria-label="Copy from-source install commands">Copy</button>
+          <pre><code id="install-source-code">git clone https://github.com/gianlucamazza/agentroom &amp;&amp; cd agentroom
+npm run setup            # install + build + link the `agentroom` CLI globally</code></pre>
+        </div>
+      </div>
 
       <div class="quickstart-block">
         <h2 id="run-a-relay">Run a relay</h2>

@@ -58,9 +58,29 @@ export async function cmdRelay(args: string[]) {
   const shutdown = (code = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    cf?.kill("SIGTERM");
-    srv?.kill("SIGTERM");
-    setTimeout(() => process.exit(code), 300);
+
+    // Wait for the children to actually exit before leaving: the server drains
+    // its WebSocket connections for up to 5s on SIGTERM, and a fixed 300ms exit
+    // cut that short (clients got connection-reset instead of a graceful close).
+    const pending = new Set<ChildProcess>();
+    for (const child of [srv, cf]) {
+      if (child && child.exitCode === null && !child.killed) {
+        pending.add(child);
+        child.once("exit", () => {
+          pending.delete(child);
+          if (pending.size === 0) process.exit(code);
+        });
+      }
+    }
+    if (pending.size === 0) { process.exit(code); return; }
+
+    for (const child of pending) child.kill("SIGTERM");
+    // Fallback: force-kill anything still alive past the server's drain window.
+    const force = setTimeout(() => {
+      for (const child of pending) child.kill("SIGKILL");
+      process.exit(code);
+    }, 6000);
+    force.unref?.();
   };
 
   // ── Start the server ──────────────────────────────────────────────────────

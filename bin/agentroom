@@ -8045,7 +8045,7 @@ var init_dist = __esm({
   }
 });
 
-// packages/server/dist/chunk-44DROQSV.js
+// packages/server/dist/chunk-DROMYGQS.js
 import { createServer } from "http";
 import { readFileSync as readFileSync5, existsSync as existsSync6 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
@@ -8053,6 +8053,15 @@ import { DatabaseSync } from "node:sqlite";
 import path4 from "path";
 import fs from "fs";
 import { createHmac, randomBytes as randomBytes3, timingSafeEqual } from "crypto";
+function runAuthMaintenance(now = Date.now()) {
+  const challengeCutoff = now - CHALLENGE_TTL_MS;
+  for (const [k, v] of challenges) {
+    if (v < challengeCutoff) challenges.delete(k);
+  }
+  for (const [k, b] of rateBuckets) {
+    if (now - b.lastRefill > BUCKET_IDLE_TTL_MS) rateBuckets.delete(k);
+  }
+}
 function clearChallengeInterval() {
   clearInterval(challengeCleanupTimer);
 }
@@ -8510,9 +8519,9 @@ Copy .env.example \u2192 .env and fill in the values.`
   });
   return httpServer;
 }
-var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, challengeCleanupTimer, rateBuckets, _secret, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, startedAt, TRUST_PROXY;
-var init_chunk_44DROQSV = __esm({
-  "packages/server/dist/chunk-44DROQSV.js"() {
+var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, BUCKET_IDLE_TTL_MS, challengeCleanupTimer, rateBuckets, _secret, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, startedAt, TRUST_PROXY;
+var init_chunk_DROMYGQS = __esm({
+  "packages/server/dist/chunk-DROMYGQS.js"() {
     "use strict";
     init_wrapper();
     init_dist();
@@ -8645,12 +8654,8 @@ var init_chunk_44DROQSV = __esm({
     };
     CHALLENGE_TTL_MS = 6e4;
     challenges = /* @__PURE__ */ new Map();
-    challengeCleanupTimer = setInterval(() => {
-      const cutoff = Date.now() - CHALLENGE_TTL_MS;
-      for (const [k, v] of challenges) {
-        if (v < cutoff) challenges.delete(k);
-      }
-    }, 6e4);
+    BUCKET_IDLE_TTL_MS = 12e4;
+    challengeCleanupTimer = setInterval(() => runAuthMaintenance(), 6e4);
     challengeCleanupTimer.unref?.();
     rateBuckets = /* @__PURE__ */ new Map();
     _secret = null;
@@ -8675,7 +8680,7 @@ __export(server_exports, {
 var init_server = __esm({
   "packages/server/dist/server.js"() {
     "use strict";
-    init_chunk_44DROQSV();
+    init_chunk_DROMYGQS();
   }
 });
 

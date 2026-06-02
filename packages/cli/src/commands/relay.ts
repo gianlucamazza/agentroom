@@ -1,5 +1,6 @@
 import { spawn, fork, type ChildProcess } from "child_process";
 import { randomBytes } from "crypto";
+import { ensureCloudflared } from "../cloudflared.js";
 import { EXIT_ERROR, EXIT_NETWORK, EXIT_USAGE } from "../exitcodes.js";
 
 function getArg(args: string[], flag: string): string | undefined {
@@ -130,12 +131,27 @@ export async function cmdRelay(args: string[]) {
   // ── Optional: public quick tunnel ────────────────────────────────────────
   if (useTunnel) {
     human("opening cloudflared quick tunnel (no account/domain needed)…");
-    cf = spawn("cloudflared", ["tunnel", "--url", base, "--no-autoupdate"], {
+
+    // agentroom manages cloudflared itself: pinned version, sha256-verified,
+    // cached under ~/.config/agentroom/bin — no system install required.
+    let cfBin: string;
+    try {
+      const cfInfo = await ensureCloudflared({ emit, human });
+      cfBin = cfInfo.path;
+    } catch (e) {
+      const msg = `cloudflared unavailable: ${String((e as Error).message ?? e)}`;
+      emit({ type: "tunnel_error", error: msg });
+      human(msg);
+      shutdown(EXIT_ERROR);
+      return;
+    }
+
+    cf = spawn(cfBin, ["tunnel", "--url", base, "--no-autoupdate"], {
       stdio: ["ignore", "pipe", "pipe"],
     });
     cf.on("error", (e) => {
       const msg = (e as NodeJS.ErrnoException).code === "ENOENT"
-        ? "cloudflared not found — install it (e.g. `yay -S cloudflared`) or run without --tunnel"
+        ? `cloudflared binary not runnable at ${cfBin}`
         : String(e);
       emit({ type: "tunnel_error", error: msg });
       human(msg);

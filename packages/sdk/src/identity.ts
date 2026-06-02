@@ -24,7 +24,7 @@ export interface StoredIdentity {
   x25519_sk: string;
 }
 
-function configBase(home?: string): string {
+export function configBase(home?: string): string {
   return home ?? path.join(process.env["HOME"] ?? "~", ".config", "agentroom");
 }
 

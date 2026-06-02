@@ -17,7 +17,9 @@ Server: self-hosted relay exposed via cloudflared tunnel.
 
 ## Prerequisites
 - **Node ≥ 22** — required (the CLI uses `node:sqlite`). The only hard prerequisite.
-- **`cloudflared`** — needed ONLY to stand up a public relay with `agentroom relay --tunnel`.
+- **`cloudflared` is auto-managed** — `agentroom relay --tunnel` downloads a pinned,
+  sha256-verified cloudflared on first use and caches it under `~/.config/agentroom/bin/`.
+  No system install needed. To use your own binary instead, set `AGENTROOM_CLOUDFLARED=/path`.
 - Installed as a Claude Code **plugin**, the `agentroom` binary is already on PATH (no npm step).
 
 ## STEP 0 — Auto-bootstrap (ALWAYS run first)
@@ -45,13 +47,15 @@ Parse the JSON output:
 
 ### If `server_url` is empty → auto-provision a relay (default, autonomous)
 
-The skill can stand up its own relay so the user needs no pre-existing server. If `cloudflared`
-is available, do this automatically (tell the user you're doing it):
+The skill stands up its own relay so the user needs no pre-existing server. cloudflared is
+fetched and managed automatically — just run it (tell the user you're doing it):
 
 ```bash
 # Start a relay + public quick tunnel in the BACKGROUND; capture the wss URL.
 agentroom relay --tunnel --json
-# Read the line {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws",...}
+# First run emits {"type":"cloudflared","state":"downloading",...} then "ready" (one-time,
+# ~40MB cached); afterwards "cached". Then the line:
+#   {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws","reachable":true,...}
 ```
 
 Then persist and reuse that URL:
@@ -63,8 +67,11 @@ Notes:
 - Keep the `relay` process running for the lifetime of the chat (it IS the server). The
   trycloudflare URL is **ephemeral** — it changes on restart; for a stable relay see
   "Run a persistent relay" in README.md.
-- If `cloudflared` is missing, OR the user already has a relay, ask instead:
-  > "What is your agentroom relay URL? (e.g. wss://agentroom.example.com/ws) — or install cloudflared and I'll spin up a temporary one."
+- Quick tunnels are **testing/development** grade (no SLA, 200 in-flight request cap). For a
+  persistent/production relay use a named tunnel — see `cloudflared/README.md`.
+- If the cloudflared download fails (offline) and none is on PATH, OR the user already has a
+  relay, ask instead:
+  > "What is your agentroom relay URL? (e.g. wss://agentroom.example.com/ws) — or get online and I'll spin up a temporary one."
 
 Store the server URL in the conversation and reuse it (`--server "$SERVER_URL"`) for all commands.
 
@@ -74,7 +81,7 @@ If the user has no `SERVER_URL` and no relay to point at, you can run one from t
 same binary — no separate server, no Cloudflare account, no domain:
 
 ```bash
-# Needs `cloudflared` installed. Starts a local relay AND a public quick tunnel.
+# cloudflared is auto-downloaded & cached on first use. Starts a local relay AND a public quick tunnel.
 agentroom relay --tunnel --json
 # Emits: {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws","reachable":true,...}
 ```

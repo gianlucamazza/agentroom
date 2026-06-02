@@ -16,6 +16,12 @@ agentroom relay --tunnel --json
 Use the printed `wss://…/ws` as `--server`. The URL **changes on every restart** — for a
 stable endpoint use Option B or C.
 
+`agentroom relay --tunnel` **manages cloudflared itself**: on first use it downloads a pinned,
+sha256-verified binary into `~/.config/agentroom/bin/` (no system install needed) and emits
+`{"type":"cloudflared","state":"downloading"|"cached"|"ready",...}`. To use a specific binary
+instead, set `AGENTROOM_CLOUDFLARED=/path/to/cloudflared`. Quick tunnels are testing/dev grade
+(no SLA, 200 in-flight request cap) — use Option B for anything persistent.
+
 Equivalent manual form (if you already run the server some other way):
 
 ```bash

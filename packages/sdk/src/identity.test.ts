@@ -12,33 +12,30 @@ afterEach(() => {
   else process.env["AGENTROOM_HOME"] = ORIG_AGENTROOM_HOME;
 });
 
-describe("configBase resolution order", () => {
-  it("explicit home arg wins over everything", () => {
-    process.env["AGENTROOM_HOME"] = "/env/home";
+describe("configBase (single identity)", () => {
+  it("explicit home arg is honored (dev/test affordance)", () => {
     process.env["HOME"] = "/user";
     expect(configBase("/explicit")).toBe("/explicit");
   });
 
-  it("falls back to AGENTROOM_HOME when no arg is given", () => {
-    process.env["AGENTROOM_HOME"] = "/env/home";
-    process.env["HOME"] = "/user";
-    expect(configBase()).toBe("/env/home");
-  });
-
-  it("falls back to ~/.config/agentroom when neither arg nor env is set", () => {
-    delete process.env["AGENTROOM_HOME"];
+  it("defaults to ~/.config/agentroom when no arg is given", () => {
     process.env["HOME"] = "/user";
     expect(configBase()).toBe(path.join("/user", ".config", "agentroom"));
   });
 
-  it("derives identityPath and sessionsDir under the resolved base (env)", () => {
+  it("does NOT honor AGENTROOM_HOME — there is a single identity for now", () => {
     process.env["AGENTROOM_HOME"] = "/env/home";
-    expect(identityPath()).toBe(path.join("/env/home", "identity.json"));
-    expect(sessionsDir()).toBe(path.join("/env/home", "sessions"));
+    process.env["HOME"] = "/user";
+    expect(configBase()).toBe(path.join("/user", ".config", "agentroom"));
   });
 
-  it("an explicit arg still overrides the env for derived paths", () => {
-    process.env["AGENTROOM_HOME"] = "/env/home";
+  it("derives identityPath and sessionsDir under the default base", () => {
+    process.env["HOME"] = "/user";
+    expect(identityPath()).toBe(path.join("/user", ".config", "agentroom", "identity.json"));
+    expect(sessionsDir()).toBe(path.join("/user", ".config", "agentroom", "sessions"));
+  });
+
+  it("an explicit arg overrides the default for derived paths", () => {
     expect(identityPath("/explicit")).toBe(path.join("/explicit", "identity.json"));
   });
 });

@@ -25,15 +25,10 @@ export interface StoredIdentity {
 }
 
 export function configBase(home?: string): string {
-  // Resolution order: explicit --home arg → AGENTROOM_HOME env → default.
-  // Honoring the env var here (one place) means every command and the
-  // cloudflared cache pick up the same alternate home — the primitive for
-  // running multiple identities side by side (`AGENTROOM_HOME=… agentroom …`).
-  return (
-    home ??
-    process.env["AGENTROOM_HOME"] ??
-    path.join(process.env["HOME"] ?? "~", ".config", "agentroom")
-  );
+  // Single identity for now: the default config home is the only one. `--home`
+  // stays as a per-command dev/test affordance, but there is no AGENTROOM_HOME
+  // env override — running several identities side by side is out of scope.
+  return home ?? path.join(process.env["HOME"] ?? "~", ".config", "agentroom");
 }
 
 export function identityPath(home?: string): string {

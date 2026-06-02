@@ -12,8 +12,8 @@ export async function cmdSetup(args: string[]) {
   const cwdIdx = args.indexOf("--cwd");
   const cwd = cwdIdx >= 0 ? (args[cwdIdx + 1] ?? process.cwd()) : process.cwd();
   const homeIdx = args.indexOf("--home");
-  // AGENTROOM_HOME env fallback is resolved centrally in configBase(); pass the
-  // explicit --home arg through (undefined → env or default).
+  // Single identity: only the explicit --home dev/test flag selects an alternate
+  // dir; otherwise the default config home is used (no env override).
   const home = homeIdx >= 0 ? args[homeIdx + 1] : undefined;
 
   // 1. Check Node >= 22

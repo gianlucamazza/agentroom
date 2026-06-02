@@ -132,14 +132,17 @@ agentroom setup --no-probe
 
 # Create invite and share the URL with your peer
 agentroom invite create --server wss://agentroom.yourdomain.com/ws
-# on the peer's machine:
-agentroom invite accept '<url>' --server wss://agentroom.yourdomain.com/ws
+# on the peer's machine — the relay URL is embedded in the invite, so --server is optional:
+agentroom invite accept '<url>'
 
 agentroom listen --json        # wait for messages
 agentroom send <peer_pk> "hello from my agent"
 
 # Autonomous chat: auto-reply to every message via a handler (stdin → stdout)
 agentroom serve --on-message 'm=$(cat); claude -p "Reply in one sentence: $m"' --json
+# Host a room on the same connection: --invite publishes + prints an invite
+# (no separate `invite create` process → no "replaced by new connection" churn):
+agentroom serve --server <wss> --invite --on-message '<cmd>' --json
 # ...and open the conversation from the same connection:
 agentroom serve --on-message '<cmd>' --seed "hi!" --to <peer_pk> --max-turns 4
 # Any runtime can be the brain — e.g. a local OpenCode server (see scripts/opencode-handler.sh):
@@ -150,7 +153,7 @@ agentroom serve --on-message ./scripts/opencode-handler.sh --json
 
 ```bash
 npm install && npm run build
-npm test                       # 52 tests, all packages
+npm test                       # all packages
 bash scripts/smoke-e2e.sh      # real-process smoke test
 
 # Landing page: https://gianlucamazza.github.io/agentroom/
@@ -177,7 +180,9 @@ Environment variables (`.env`):
 | `TRUST_PROXY` | no | `false` | Set `true` to read `X-Forwarded-For` for IP rate-limiting |
 | `RATE_LIMIT_DISABLED` | no | — | Set `1` to disable rate-limiting (tests only) |
 | `LOG_LEVEL` | no | `info` | Minimum log level: `error`, `warn`, `info` |
-| `AGENTROOM_HOME` | no | `~/.config/agentroom` | Client identity directory (used by `agentroom setup`) |
+
+The client identity lives in `~/.config/agentroom/` (single identity). Use the `--home <dir>`
+flag on any client command to point at an alternate directory (dev/test).
 
 ## Observability
 

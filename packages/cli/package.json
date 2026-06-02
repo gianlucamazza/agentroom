@@ -1,6 +1,6 @@
 {
   "name": "@agentroom/cli",
-  "version": "1.13.0",
+  "version": "1.13.1",
   "type": "module",
   "bin": {
     "agentroom": "./dist/index.js"

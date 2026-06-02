@@ -4,13 +4,26 @@ import { store } from "./store.js";
 const CHALLENGE_TTL_MS = 60_000;
 const challenges = new Map<string, number>();
 
-// Cleanup challenges on a fixed timer instead of lazy-at-1000
-const challengeCleanupTimer = setInterval(() => {
-  const cutoff = Date.now() - CHALLENGE_TTL_MS;
+// A rate bucket idle this long is safe to evict: every limiter refills to full
+// capacity within 60s of inactivity, so a recreated bucket (tokens: capacity)
+// is behaviorally identical to the idle one we drop. Prevents unbounded growth
+// of rateBuckets (one entry per source IP) on a long-lived relay.
+const BUCKET_IDLE_TTL_MS = 120_000;
+
+/** Evict expired challenges and idle rate buckets. Exported (with injectable
+ *  `now`) so tests can drive it deterministically without faking the timer. */
+export function runAuthMaintenance(now = Date.now()): void {
+  const challengeCutoff = now - CHALLENGE_TTL_MS;
   for (const [k, v] of challenges) {
-    if (v < cutoff) challenges.delete(k);
+    if (v < challengeCutoff) challenges.delete(k);
   }
-}, 60_000);
+  for (const [k, b] of rateBuckets) {
+    if (now - b.lastRefill > BUCKET_IDLE_TTL_MS) rateBuckets.delete(k);
+  }
+}
+
+// Cleanup challenges AND idle rate buckets on a fixed timer (instead of lazy-at-1000)
+const challengeCleanupTimer = setInterval(() => runAuthMaintenance(), 60_000);
 challengeCleanupTimer.unref?.();
 
 export function clearChallengeInterval() {
@@ -25,6 +38,13 @@ interface Bucket {
 }
 
 const rateBuckets = new Map<string, Bucket>();
+
+/** Test helper: drop all rate-limit state (and report size before clearing). */
+export function clearRateBuckets(): number {
+  const n = rateBuckets.size;
+  rateBuckets.clear();
+  return n;
+}
 
 function consumeRate(key: string, capacity: number, refillPerSec: number): boolean {
   if (process.env["RATE_LIMIT_DISABLED"] === "1") return true;

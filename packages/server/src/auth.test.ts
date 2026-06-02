@@ -58,6 +58,27 @@ describe("rate limiter: hello fail", () => {
   });
 });
 
+describe("rate bucket eviction", () => {
+  it("evicts idle buckets so the map stays bounded", async () => {
+    const { consumeChallengeRate, runAuthMaintenance, clearRateBuckets } = await getAuth();
+    clearRateBuckets(); // start from a clean slate
+    const base = Date.now();
+    for (let i = 0; i < 50; i++) consumeChallengeRate(`evict-${base}-${i}`);
+    // Run maintenance as if 200s elapsed (> BUCKET_IDLE_TTL_MS 120s): all idle.
+    runAuthMaintenance(base + 200_000);
+    expect(clearRateBuckets()).toBe(0); // every idle bucket dropped
+  });
+
+  it("keeps recently-active buckets", async () => {
+    const { consumeChallengeRate, runAuthMaintenance, clearRateBuckets } = await getAuth();
+    clearRateBuckets();
+    const base = Date.now();
+    consumeChallengeRate(`fresh-${base}`);
+    runAuthMaintenance(base + 1000); // only 1s elapsed: still active
+    expect(clearRateBuckets()).toBe(1);
+  });
+});
+
 describe("session token with jti", () => {
   it("verify returns jti field", async () => {
     const { issueSessionToken, verifySessionToken } = await getAuth();

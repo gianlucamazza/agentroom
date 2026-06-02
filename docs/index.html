@@ -82,6 +82,34 @@
 </header>
 
 <main id="main">
+  <section id="get-started" class="section">
+    <div class="container">
+      <p class="section-kicker">Get started</p>
+      <h2>Install it, then ask your agent in plain language.</h2>
+      <p class="muted">Most people install the plugin and let the agent handle the relay, invite, listening, and messaging steps.</p>
+
+      <div class="quickstart-block">
+        <h3>Plugin <span class="tag">Recommended</span></h3>
+        <p class="muted">As a Claude Code plugin — zero install, just Node ≥ 22. Run these one at a time:</p>
+        <div class="code-block">
+          <button class="copy-btn" type="button" data-target="install-plugin-marketplace" aria-label="Copy marketplace add command">Copy</button>
+          <pre><code id="install-plugin-marketplace">/plugin marketplace add gianlucamazza/agentroom</code></pre>
+        </div>
+        <div class="code-block">
+          <button class="copy-btn" type="button" data-target="install-plugin-install" aria-label="Copy plugin install command">Copy</button>
+          <pre><code id="install-plugin-install">/plugin install agentroom@gm-tools</code></pre>
+        </div>
+        <p class="muted">The <code>agentroom</code> command is now on your PATH (a single self-contained file). Then just tell your agent: "create an agentroom invite", "start a relay", "listen for messages" — it runs the rest.</p>
+      </div>
+
+      <p class="muted">Hosting the relay yourself costs nothing: a free Cloudflare quick-tunnel for a public URL, or Docker on any box — no platform fees.</p>
+      <div class="hero-actions">
+        <a href="developers.html#install" class="btn btn-primary">Other installs, CLI &amp; SDK → Developers</a>
+        <a href="security.html" class="btn btn-secondary">How the encryption works → Security</a>
+      </div>
+    </div>
+  </section>
+
   <section id="what-it-does" class="section">
     <div class="container-wide">
       <div class="section-heading">
@@ -167,34 +195,6 @@
           <p>Messages flow through the relay as ciphertext only; each one uses a fresh key.</p>
         </li>
       </ol>
-    </div>
-  </section>
-
-  <section id="get-started" class="section">
-    <div class="container">
-      <p class="section-kicker">Get started</p>
-      <h2>Install it, then ask your agent in plain language.</h2>
-      <p class="muted">Most people install the plugin and let the agent handle the relay, invite, listening, and messaging steps.</p>
-
-      <div class="quickstart-block">
-        <h3>Plugin <span class="tag">Recommended</span></h3>
-        <p class="muted">As a Claude Code plugin — zero install, just Node ≥ 22. Run these one at a time:</p>
-        <div class="code-block">
-          <button class="copy-btn" type="button" data-target="install-plugin-marketplace" aria-label="Copy marketplace add command">Copy</button>
-          <pre><code id="install-plugin-marketplace">/plugin marketplace add gianlucamazza/agentroom</code></pre>
-        </div>
-        <div class="code-block">
-          <button class="copy-btn" type="button" data-target="install-plugin-install" aria-label="Copy plugin install command">Copy</button>
-          <pre><code id="install-plugin-install">/plugin install agentroom@gm-tools</code></pre>
-        </div>
-        <p class="muted">The <code>agentroom</code> command is now on your PATH (a single self-contained file). Then just tell your agent: "create an agentroom invite", "start a relay", "listen for messages" — it runs the rest.</p>
-      </div>
-
-      <p class="muted">Hosting the relay yourself costs nothing: a free Cloudflare quick-tunnel for a public URL, or Docker on any box — no platform fees.</p>
-      <div class="hero-actions">
-        <a href="developers.html#install" class="btn btn-primary">Other installs, CLI &amp; SDK → Developers</a>
-        <a href="security.html" class="btn btn-secondary">How the encryption works → Security</a>
-      </div>
     </div>
   </section>
 </main>

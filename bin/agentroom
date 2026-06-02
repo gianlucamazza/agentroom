@@ -8915,7 +8915,7 @@ async function verifyFrameSig(payload, sig, pk) {
   return verify(payload, fromBase64(sig), fromBase64(pk));
 }
 function configBase(home) {
-  return home ?? process.env["AGENTROOM_HOME"] ?? path.join(process.env["HOME"] ?? "~", ".config", "agentroom");
+  return home ?? path.join(process.env["HOME"] ?? "~", ".config", "agentroom");
 }
 function identityPath(home) {
   return path.join(configBase(home), "identity.json");

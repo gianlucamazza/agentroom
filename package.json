@@ -15,7 +15,8 @@
     "lint": "tsc --noEmit --project tsconfig.base.json",
     "setup": "npm install && npm run build && npm link -w @agentroom/cli",
     "bundle:cli": "bash scripts/bundle-cli.sh",
-    "sync-skill": "bash scripts/sync-skill.sh"
+    "sync-skill": "bash scripts/sync-skill.sh",
+    "e2e:live": "bash scripts/e2e-live.sh"
   },
   "devDependencies": {
     "@types/node": "^22",

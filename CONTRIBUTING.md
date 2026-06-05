@@ -30,6 +30,10 @@ cd packages/sdk && npm test
 
 # E2E smoke test (real processes, local server, no tunnel)
 bash scripts/smoke-e2e.sh
+
+# Live E2E: two Claude agents over the relay via the local `claude` CLI
+# (Claude Code OAuth session; auto-skips if claude is missing/unauthenticated)
+npm run e2e:live
 ```
 
 ## Adding a test

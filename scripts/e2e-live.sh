@@ -44,7 +44,7 @@ fail() {
 
 wait_for() {
 	local file="$1" pattern="$2" max_s="${3:-5}"
-	for i in $(seq 1 "$((max_s * 5))"); do
+	for _ in $(seq 1 "$((max_s * 5))"); do
 		sleep 0.2
 		grep -q "$pattern" "$file" 2>/dev/null && return 0
 	done
@@ -95,7 +95,7 @@ start_server() {
 	HMAC_SECRET="$TEST_SECRET" PORT="$TEST_PORT" AGENTROOM_DB="$SERVER_DB" \
 		$SERVER_CMD >>"$SERVER_LOG" 2>&1 &
 	SERVER_PID=$!
-	for i in $(seq 1 20); do
+	for _ in $(seq 1 20); do
 		sleep 0.2
 		curl -sf "http://localhost:$TEST_PORT/health" >/dev/null 2>&1 && return 0
 		kill -0 "$SERVER_PID" 2>/dev/null || fail "server died. Log: $(tail -5 "$SERVER_LOG")"

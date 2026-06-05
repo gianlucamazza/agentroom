@@ -42,7 +42,7 @@ fail() {
 
 wait_for() {
 	local file="$1" pattern="$2" max_s="${3:-5}"
-	for i in $(seq 1 "$((max_s * 5))"); do
+	for _ in $(seq 1 "$((max_s * 5))"); do
 		sleep 0.2
 		grep -q "$pattern" "$file" 2>/dev/null && return 0
 	done
@@ -130,7 +130,7 @@ if grep '"type":"tunnel"' "$HOST_LOG" | head -1 | grep -q '"reachable":true'; th
 else
 	log "relay probe says unreachable — polling $TUNNEL_HTTPS/health (DNS may lag)..."
 	reachable=""
-	for i in $(seq 1 45); do
+	for _ in $(seq 1 45); do
 		sleep 2
 		if curl -sf --max-time 5 "$TUNNEL_HTTPS/health" >/dev/null 2>&1; then
 			reachable=1

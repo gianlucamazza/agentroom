@@ -31,7 +31,7 @@ fail() {
 
 wait_for() {
 	local file="$1" pattern="$2" max_s="${3:-5}"
-	for i in $(seq 1 "$((max_s * 5))"); do
+	for _ in $(seq 1 "$((max_s * 5))"); do
 		sleep 0.2
 		grep -q "$pattern" "$file" 2>/dev/null && return 0
 	done
@@ -42,7 +42,7 @@ wait_for() {
 # not /health agents which is the DB count and doesn't reset on server restart)
 wait_agents() {
 	local n="${1:-1}" max_s="${2:-5}"
-	for i in $(seq 1 "$((max_s * 5))"); do
+	for _ in $(seq 1 "$((max_s * 5))"); do
 		sleep 0.2
 		local count
 		count=$(curl -sf "http://localhost:$TEST_PORT/metrics" 2>/dev/null | grep -o '"ws_connections":[0-9]*' | grep -o '[0-9]*$' || echo 0)
@@ -86,7 +86,7 @@ start_server() {
 	HMAC_SECRET="$TEST_SECRET" PORT="$TEST_PORT" AGENTROOM_DB="$SERVER_DB" \
 		$SERVER_CMD >>"$SERVER_LOG" 2>&1 &
 	SERVER_PID=$!
-	for i in $(seq 1 20); do
+	for _ in $(seq 1 20); do
 		sleep 0.2
 		curl -sf "http://localhost:$TEST_PORT/health" >/dev/null 2>&1 && return 0
 		kill -0 "$SERVER_PID" 2>/dev/null || fail "server died. Log: $(tail -5 "$SERVER_LOG")"
@@ -109,7 +109,7 @@ $AR init --home "$ALICE_HOME" >/dev/null
 $AR init --home "$BOB_HOME" >/dev/null
 
 ALICE_PK=$($AR whoami --home "$ALICE_HOME" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));process.stdout.write(d.ed25519_pk)")
-BOB_PK=$($AR whoami --home "$BOB_HOME" | node -e "const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));process.stdout.write(d.ed25519_pk)")
+# (only Alice's pk is needed: Bob is always the sender in the scenarios below)
 
 # ── Invite flow ───────────────────────────────────────────────────────────────
 log "alice creates invite..."

@@ -22,6 +22,7 @@ OC_SERVER="${OPENCODE_ATTACH:-http://localhost:4096}"
 # fails with a confusing auth / "Session not found" error.
 if [ -f "$HOME/.config/opencode/server.env" ]; then
 	set -a
+	# shellcheck disable=SC1091
 	. "$HOME/.config/opencode/server.env"
 	set +a
 fi
@@ -42,7 +43,7 @@ dir_args=()
 # The GLM backend occasionally returns an empty completion under load — retry a
 # couple of times before giving up (an empty reply makes `serve` send nothing).
 reply=""
-for attempt in 1 2 3; do
+for _ in 1 2 3; do
 	reply="$(timeout 120 opencode run --attach "$OC_SERVER" "${dir_args[@]}" "$prompt" 2>/dev/null)" || true
 	[ -n "$reply" ] && break
 	sleep 3

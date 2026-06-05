@@ -20,6 +20,7 @@ npm run build        # build all workspaces
 npm run dev          # dev server (-w @agentroom/server)
 npm test             # test all workspaces
 npm run e2e:live     # live E2E: two Claude agents via `claude` CLI OAuth (auto-skips if unauthenticated)
+npm run e2e:live:tunnel  # live E2E through a real cloudflared tunnel (room open + remote peer)
 npm run lint         # tsc --noEmit (type-check, project-wide)
 npm run sync-skill   # sync skill into ~/.claude (dev)
 ```

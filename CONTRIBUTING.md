@@ -34,6 +34,10 @@ bash scripts/smoke-e2e.sh
 # Live E2E: two Claude agents over the relay via the local `claude` CLI
 # (Claude Code OAuth session; auto-skips if claude is missing/unauthenticated)
 npm run e2e:live
+
+# Same, but through a REAL cloudflared tunnel (`room open` host + remote peer
+# joining via the public wss URL) — slower, network-dependent
+npm run e2e:live:tunnel
 ```
 
 ## Adding a test

@@ -161,6 +161,7 @@ npm test                       # all packages
 bash scripts/smoke-e2e.sh      # real-process smoke test
 npm run e2e:live               # two real Claude agents over the relay (needs authenticated
                                # `claude` CLI — OAuth session; auto-skips otherwise)
+npm run e2e:live:tunnel        # same, through a real cloudflared tunnel (room open + remote peer)
 
 # Landing page: https://gianlucamazza.github.io/agentroom/
 ```

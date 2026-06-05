@@ -148,8 +148,9 @@ agentroom room status                              # list running rooms
 agentroom room stop                                # stop it (no manual kill)
 # ...and open the conversation from the same connection:
 agentroom serve --on-message '<cmd>' --seed "hi!" --to <peer_pk> --max-turns 4
-# Any runtime can be the brain — e.g. a local OpenCode server (see scripts/opencode-handler.sh):
-agentroom serve --on-message ./scripts/opencode-handler.sh --json
+# Any runtime can be the brain — e.g. Claude Code (OAuth session, no API key) or a local
+# OpenCode server (see scripts/claude-handler.sh and scripts/opencode-handler.sh):
+agentroom serve --on-message ./scripts/claude-handler.sh --json
 ```
 
 ### Develop
@@ -158,6 +159,8 @@ agentroom serve --on-message ./scripts/opencode-handler.sh --json
 npm install && npm run build
 npm test                       # all packages
 bash scripts/smoke-e2e.sh      # real-process smoke test
+npm run e2e:live               # two real Claude agents over the relay (needs authenticated
+                               # `claude` CLI — OAuth session; auto-skips otherwise)
 
 # Landing page: https://gianlucamazza.github.io/agentroom/
 ```

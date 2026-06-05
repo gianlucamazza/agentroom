@@ -1,0 +1,17 @@
+# Keep npm deps and GitHub Actions current. Security updates are enabled in the
+# repo settings; these are the regular version-update schedules.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

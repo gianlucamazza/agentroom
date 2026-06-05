@@ -14,7 +14,26 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: CI only reads the repo. Jobs that need more must ask explicitly.
+permissions:
+  contents: read
+
 jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: ShellCheck scripts/
+        # -S warning: fail on warnings and errors, not on info/style notes
+        # (e.g. SC2015 on the intentional `[[ -n pid ]] && kill … || true` cleanups),
+        # which also keeps the gate stable across shellcheck versions.
+        run: shellcheck -S warning scripts/*.sh
+
   test:
     name: Test (Node ${{ matrix.node }})
     runs-on: ubuntu-latest

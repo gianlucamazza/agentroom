@@ -29,7 +29,10 @@ jobs:
           persist-credentials: false
 
       - name: ShellCheck scripts/
-        run: shellcheck scripts/*.sh
+        # -S warning: fail on warnings and errors, not on info/style notes
+        # (e.g. SC2015 on the intentional `[[ -n pid ]] && kill … || true` cleanups),
+        # which also keeps the gate stable across shellcheck versions.
+        run: shellcheck -S warning scripts/*.sh
 
   test:
     name: Test (Node ${{ matrix.node }})

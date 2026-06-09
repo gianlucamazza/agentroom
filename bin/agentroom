@@ -19020,7 +19020,7 @@ var init_dist = __esm({
   }
 });
 
-// packages/server/dist/chunk-DROMYGQS.js
+// packages/server/dist/chunk-5IQFENBL.js
 import { createServer } from "http";
 import { readFileSync as readFileSync6, existsSync as existsSync8 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
@@ -19495,8 +19495,8 @@ Copy .env.example \u2192 .env and fill in the values.`
   return httpServer;
 }
 var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, BUCKET_IDLE_TTL_MS, challengeCleanupTimer, rateBuckets, _secret, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, startedAt, TRUST_PROXY;
-var init_chunk_DROMYGQS = __esm({
-  "packages/server/dist/chunk-DROMYGQS.js"() {
+var init_chunk_5IQFENBL = __esm({
+  "packages/server/dist/chunk-5IQFENBL.js"() {
     "use strict";
     init_wrapper();
     init_dist();
@@ -19655,7 +19655,7 @@ __export(server_exports, {
 var init_server = __esm({
   "packages/server/dist/server.js"() {
     "use strict";
-    init_chunk_DROMYGQS();
+    init_chunk_5IQFENBL();
   }
 });
 

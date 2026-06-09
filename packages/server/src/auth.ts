@@ -1,5 +1,4 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
-import { store } from "./store.js";
 
 const CHALLENGE_TTL_MS = 60_000;
 const challenges = new Map<string, number>();

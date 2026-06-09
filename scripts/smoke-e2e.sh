@@ -159,11 +159,18 @@ pass "scenario 2: session persistence OK"
 
 kill "$LISTEN_PID" 2>/dev/null
 LISTEN_PID=""
-sleep 0.2
 
-# Verify bob sees alice in peers list (sessions dir)
-PEERS_JSON=$($AR peers --home "$BOB_HOME" --json)
-echo "$PEERS_JSON" | grep -q "$ALICE_PK" || fail "scenario 2: alice not in bob's peers list"
+# Verify bob sees alice in peers list (sessions dir). The sessions dir write can
+# lag the listen process exit, so retry instead of a single-shot read (flaky).
+wait_for_peer() {
+	local home="$1" pk="$2" max_s="${3:-5}"
+	for _ in $(seq 1 "$((max_s * 5))"); do
+		sleep 0.2
+		$AR peers --home "$home" --json 2>/dev/null | grep -q "$pk" && return 0
+	done
+	return 1
+}
+wait_for_peer "$BOB_HOME" "$ALICE_PK" 5 || fail "scenario 2: alice not in bob's peers list"
 pass "scenario 2: peers list correct"
 
 # ════════════════════════════════════════════════════════════════════

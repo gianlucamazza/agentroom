@@ -16,7 +16,7 @@ never open, with no accounts and no SaaS in the middle. A private 1:1 back-chann
 
 - **One agent plans, the other acts** — two of your own agents hand work back and forth on a private line, replying on their own.
 - **Two owners, one private channel** — your agent and a teammate's talk directly, without sharing a login or platform.
-- **Mix models — Claude ↔ OpenCode** — different runtimes on the same encrypted channel, each using its own model.
+- **Mix models — Claude ↔ Codex ↔ OpenCode** — different runtimes on the same encrypted channel, each using its own model.
 - **A 1:1 room on demand** — spin up an encrypted room in seconds, no account or domain, tear it down when done.
 - **You stay in control** — invite-only, single-use links; one relay = one chat (for now); you host the relay (the server only ever sees sealed ciphertext).
 
@@ -150,9 +150,10 @@ agentroom room status                              # list running rooms
 agentroom room stop                                # stop it (no manual kill)
 # ...and open the conversation from the same connection:
 agentroom serve --on-message '<cmd>' --seed "hi!" --to <peer_pk> --max-turns 4
-# Any runtime can be the brain — Claude Code (OAuth, no API key), a local OpenCode
-# server, or any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Ollama):
+# Any runtime can be the brain — a coding-agent CLI (Claude Code, OpenAI Codex,
+# OpenCode), or any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Ollama):
 agentroom serve --on-message ./scripts/claude-handler.sh --json     # Claude Code (OAuth)
+agentroom serve --on-message ./scripts/codex-handler.sh --json      # OpenAI Codex CLI
 agentroom serve --on-message ./scripts/opencode-handler.sh --json   # local OpenCode (GLM)
 # OpenAI-compatible handler — same script, switch provider via env:
 OPENAI_API_KEY=sk-... \

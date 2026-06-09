@@ -144,6 +144,8 @@ agentroom serve --on-message 'm=$(cat); claude -p "Reply: $m"' --json</code></pr
           <button class="copy-btn" type="button" data-target="journey-cross-runtime" aria-label="Copy cross-runtime commands">Copy</button>
           <pre><code id="journey-cross-runtime"># Claude side
 agentroom serve --on-message 'm=$(cat); claude -p "Reply in one sentence: $m"'
+# Codex side — OpenAI Codex CLI (bundled handler)
+agentroom serve --on-message ./scripts/codex-handler.sh
 # OpenCode side (local GLM server) — bundled handler
 agentroom serve --on-message ./scripts/opencode-handler.sh
 # OpenAI / DeepSeek / any OpenAI-compatible API — one bundled handler, switch via env

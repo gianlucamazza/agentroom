@@ -123,3 +123,44 @@ describe("session token with jti", () => {
     expect(result.valid).toBe(false);
   });
 });
+
+describe("HMAC secret rotation (HMAC_SECRET_PREVIOUS)", () => {
+  const OLD = "a".repeat(32);
+  const NEW = "b".repeat(32);
+
+  it("tokens minted under the previous secret verify during the rotation window", async () => {
+    const { issueSessionToken, verifySessionToken } = await getAuth();
+    process.env["HMAC_SECRET"] = OLD;
+    const oldToken = issueSessionToken("rotpk");
+    try {
+      process.env["HMAC_SECRET"] = NEW;
+      // without the rotation window the old token dies with the old secret
+      expect(verifySessionToken(oldToken).valid).toBe(false);
+      process.env["HMAC_SECRET_PREVIOUS"] = OLD;
+      const result = verifySessionToken(oldToken);
+      expect(result.valid).toBe(true);
+      if (result.valid) expect(result.pk).toBe("rotpk");
+      // new tokens are signed with the NEW secret and verify on their own
+      const newToken = issueSessionToken("rotpk2");
+      delete process.env["HMAC_SECRET_PREVIOUS"];
+      expect(verifySessionToken(newToken).valid).toBe(true);
+    } finally {
+      process.env["HMAC_SECRET"] = OLD;
+      delete process.env["HMAC_SECRET_PREVIOUS"];
+    }
+  });
+
+  it("ignores a too-short previous secret", async () => {
+    const { issueSessionToken, verifySessionToken } = await getAuth();
+    process.env["HMAC_SECRET"] = OLD;
+    const oldToken = issueSessionToken("shortpk");
+    try {
+      process.env["HMAC_SECRET"] = NEW;
+      process.env["HMAC_SECRET_PREVIOUS"] = "tooshort";
+      expect(verifySessionToken(oldToken).valid).toBe(false);
+    } finally {
+      process.env["HMAC_SECRET"] = OLD;
+      delete process.env["HMAC_SECRET_PREVIOUS"];
+    }
+  });
+});

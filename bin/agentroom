@@ -19022,7 +19022,7 @@ var init_dist = __esm({
   }
 });
 
-// packages/server/dist/chunk-OAUVJMCR.js
+// packages/server/dist/chunk-ZF7XF7ZA.js
 import { createServer } from "http";
 import { readFileSync as readFileSync6, existsSync as existsSync8 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
@@ -19068,16 +19068,17 @@ function consumeFrameRate(pk) {
   return consumeRate(`frames:${pk}`, 120, 1);
 }
 function secret() {
-  if (!_secret) {
-    const s = process.env["HMAC_SECRET"];
-    if (!s || s.length < 32) {
-      throw new Error(
-        `HMAC_SECRET env var is missing or too short (min 32 chars). Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
-      );
-    }
-    _secret = s;
+  const s = process.env["HMAC_SECRET"];
+  if (!s || s.length < 32) {
+    throw new Error(
+      `HMAC_SECRET env var is missing or too short (min 32 chars). Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+    );
   }
-  return _secret;
+  return s;
+}
+function previousSecret() {
+  const s = process.env["HMAC_SECRET_PREVIOUS"];
+  return s && s.length >= 32 ? s : null;
 }
 function issueChallenge() {
   const token = randomBytes3(24).toString("base64url");
@@ -19104,10 +19105,15 @@ function verifySessionToken(token, maxAgeMs = 36e5) {
     const mac3 = token.slice(dotIdx + 1);
     if (!payloadB64 || !mac3) return { valid: false };
     const payload = Buffer.from(payloadB64, "base64url").toString();
-    const expectedMac = createHmac("sha256", secret()).update(payload).digest("base64url");
-    if (!timingSafeEqual(Buffer.from(mac3), Buffer.from(expectedMac))) {
-      return { valid: false };
-    }
+    const macBuf = Buffer.from(mac3);
+    const matched = [secret(), previousSecret()].filter((s) => s !== null).map(
+      (s) => Buffer.from(
+        createHmac("sha256", s).update(payload).digest("base64url")
+      )
+    ).some(
+      (expected) => macBuf.length === expected.length && timingSafeEqual(macBuf, expected)
+    );
+    if (!matched) return { valid: false };
     const parts = payload.split(".");
     if (parts.length < 3) return { valid: false };
     const jti = parts[0];
@@ -19609,9 +19615,9 @@ Copy .env.example \u2192 .env and fill in the values.`
   });
   return httpServer;
 }
-var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, BUCKET_IDLE_TTL_MS, challengeCleanupTimer, rateBuckets, _secret, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, BACKPRESSURE_BYTES, startedAt, TRUST_PROXY;
-var init_chunk_OAUVJMCR = __esm({
-  "packages/server/dist/chunk-OAUVJMCR.js"() {
+var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, BUCKET_IDLE_TTL_MS, challengeCleanupTimer, rateBuckets, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, BACKPRESSURE_BYTES, startedAt, TRUST_PROXY;
+var init_chunk_ZF7XF7ZA = __esm({
+  "packages/server/dist/chunk-ZF7XF7ZA.js"() {
     "use strict";
     init_wrapper();
     init_dist();
@@ -19765,7 +19771,6 @@ var init_chunk_OAUVJMCR = __esm({
     challengeCleanupTimer = setInterval(() => runAuthMaintenance(), 6e4);
     challengeCleanupTimer.unref?.();
     rateBuckets = /* @__PURE__ */ new Map();
-    _secret = null;
     counters = /* @__PURE__ */ new Map();
     for (const name of [
       "ws_connections",
@@ -19796,7 +19801,7 @@ __export(server_exports, {
 var init_server = __esm({
   "packages/server/dist/server.js"() {
     "use strict";
-    init_chunk_OAUVJMCR();
+    init_chunk_ZF7XF7ZA();
   }
 });
 

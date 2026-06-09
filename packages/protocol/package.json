@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "libsodium-wrappers": "^0.8.4",
-    "zod": "^3.25.76"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/libsodium-wrappers": "^0.8.2"

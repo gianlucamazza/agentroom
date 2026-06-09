@@ -82,20 +82,26 @@ export function consumeFrameRate(pk: string): boolean {
 }
 
 // ── HMAC secret ───────────────────────────────────────────────────────────
+// Read on every use (not cached) so a restart-free test can rotate, and so
+// HMAC_SECRET_PREVIOUS can provide a dual-key verification window: new tokens
+// are always signed with HMAC_SECRET, but tokens minted under the previous
+// secret keep verifying until the operator unsets HMAC_SECRET_PREVIOUS.
 
-let _secret: string | null = null;
 function secret(): string {
-  if (!_secret) {
-    const s = process.env["HMAC_SECRET"];
-    if (!s || s.length < 32) {
-      throw new Error(
-        "HMAC_SECRET env var is missing or too short (min 32 chars). " +
-          "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
-      );
-    }
-    _secret = s;
+  const s = process.env["HMAC_SECRET"];
+  if (!s || s.length < 32) {
+    throw new Error(
+      "HMAC_SECRET env var is missing or too short (min 32 chars). " +
+        "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+    );
   }
-  return _secret;
+  return s;
+}
+
+function previousSecret(): string | null {
+  const s = process.env["HMAC_SECRET_PREVIOUS"];
+  // a too-short previous secret is ignored, never accepted
+  return s && s.length >= 32 ? s : null;
 }
 
 // ── challenge ─────────────────────────────────────────────────────────────
@@ -136,12 +142,20 @@ export function verifySessionToken(
     const mac = token.slice(dotIdx + 1);
     if (!payloadB64 || !mac) return { valid: false };
     const payload = Buffer.from(payloadB64, "base64url").toString();
-    const expectedMac = createHmac("sha256", secret())
-      .update(payload)
-      .digest("base64url");
-    if (!timingSafeEqual(Buffer.from(mac), Buffer.from(expectedMac))) {
-      return { valid: false };
-    }
+    const macBuf = Buffer.from(mac);
+    const matched = [secret(), previousSecret()]
+      .filter((s): s is string => s !== null)
+      .map((s) =>
+        Buffer.from(
+          createHmac("sha256", s).update(payload).digest("base64url"),
+        ),
+      )
+      .some(
+        (expected) =>
+          macBuf.length === expected.length &&
+          timingSafeEqual(macBuf, expected),
+      );
+    if (!matched) return { valid: false };
     const parts = payload.split(".");
     if (parts.length < 3) return { valid: false };
     const jti = parts[0]!;

@@ -45,8 +45,13 @@ for the exact constructions; the wire format is frozen on them.
 - Identity keys (`~/.config/agentroom/identity.json`): permissions 600
 - Session state (`~/.config/agentroom/sessions/<pk>.json`): permissions 600
 - `HMAC_SECRET` (server): environment variable, never logged, minimum 32 chars
-  - Rotate by stopping the server, changing `HMAC_SECRET` in `.env`, restarting
-  - After rotation, all active session tokens are invalidated (users must reconnect)
+  - Rotate by setting `HMAC_SECRET` to the new value and `HMAC_SECRET_PREVIOUS`
+    to the old one, then restarting: tokens minted under the old secret keep
+    verifying during the window, new tokens are signed with the new secret
+  - Unset `HMAC_SECRET_PREVIOUS` (and restart) to close the window — tokens are
+    valid 1 hour, so a window of an hour suffices
+  - For immediate revocation of all tokens, rotate without setting
+    `HMAC_SECRET_PREVIOUS`
 
 ## Rate Limits
 
@@ -85,9 +90,12 @@ payload:
 ## Known Limitations
 
 - No forward secrecy for session tokens (HMAC-SHA256, not ephemeral)
-- Session tokens are stateless (HMAC-signed); revocation is achieved by rotating `HMAC_SECRET`, which invalidates all active tokens immediately
+- Session tokens are stateless (HMAC-signed); revocation is achieved by rotating `HMAC_SECRET` without `HMAC_SECRET_PREVIOUS`, which invalidates all active tokens immediately
 - Rate limits are in-memory — reset on server restart; no distributed rate limiting
 - No IP allowlist / authentication at the cloudflared level
+- Out-of-order delivery buffer is bounded: max 100 skipped message keys per session, 5-minute TTL — messages skipped beyond that cannot be decrypted later
+- No protocol version negotiation: a peer can force v1 (no DH ratchet) on a v2-capable peer; both versions retain per-message forward secrecy
+- Message `seq` is a uint32 in the per-message KDF — it resets on every DH ratchet step, so wraparound is unreachable in practice
 
 ## Vulnerability Reporting
 

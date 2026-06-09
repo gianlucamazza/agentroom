@@ -67,6 +67,17 @@ function send(ws: WebSocket, data: unknown) {
   }
 }
 
+// A slow reader must not make the relay buffer unboundedly on its socket:
+// past this threshold deliveries fall back to the pending queue instead.
+const BACKPRESSURE_BYTES = 1024 * 1024;
+
+/** True if the socket is open and its send buffer has room for a delivery. */
+export function canDeliverNow(ws: WebSocket): boolean {
+  return (
+    ws.readyState === WebSocket.OPEN && ws.bufferedAmount <= BACKPRESSURE_BYTES
+  );
+}
+
 function errorFrame(code: string, message: string) {
   return {
     v: PROTOCOL_VERSION,
@@ -94,24 +105,29 @@ function ackFrame(
   };
 }
 
-function flushPending(ws: WebSocket, pk: string) {
+export function flushPending(ws: WebSocket, pk: string) {
   const pending = store.dequeuePending(pk);
   for (const { id, envelope } of pending) {
+    let routed: RoutedFrame;
     try {
-      const routed = JSON.parse(envelope) as RoutedFrame;
-      // only delete after confirming ws is still open — never lose messages silently
-      if (ws.readyState !== WebSocket.OPEN) break;
-      send(ws, {
-        v: PROTOCOL_VERSION,
-        type: "DELIVERY",
-        msg_id: randomUUID(),
-        ts: Date.now(),
-        routed,
-      });
-      store.deletePending(id);
+      routed = JSON.parse(envelope) as RoutedFrame;
     } catch {
+      // a poison row would otherwise block the queue forever: drop, but loudly
+      logEvent("warn", "pending.dropped_malformed", { id });
       store.deletePending(id);
+      continue;
     }
+    // only delete after confirming the ws is open AND not backpressured —
+    // never lose messages silently, never buffer unboundedly
+    if (!canDeliverNow(ws)) break;
+    send(ws, {
+      v: PROTOCOL_VERSION,
+      type: "DELIVERY",
+      msg_id: randomUUID(),
+      ts: Date.now(),
+      routed,
+    });
+    store.deletePending(id);
   }
 }
 
@@ -240,12 +256,12 @@ async function handleInviteClaim(ws: WebSocket, frame: InviteClaimFrame) {
     return;
   }
 
-  // Apply same cap as handleRouted to prevent queue amplification
+  // Apply same cap as handleRouted to prevent queue amplification. The cap
+  // must hold whenever we would enqueue — inviter offline OR backpressured.
   const maxMsgs = parseInt(process.env["MAX_PENDING_MSGS"] ?? "500", 10);
-  if (
-    !agents.has(invite.inviter_pk) &&
-    store.countPending(invite.inviter_pk) >= maxMsgs
-  ) {
+  const inviter = agents.get(invite.inviter_pk);
+  const deliverNow = inviter !== undefined && canDeliverNow(inviter.ws);
+  if (!deliverNow && store.countPending(invite.inviter_pk) >= maxMsgs) {
     send(ws, ackFrame(frame.msg_id, "error", "recipient queue full"));
     return;
   }
@@ -269,8 +285,7 @@ async function handleInviteClaim(ws: WebSocket, frame: InviteClaimFrame) {
     seq: 0,
   };
 
-  const inviter = agents.get(invite.inviter_pk);
-  if (inviter) {
+  if (deliverNow && inviter) {
     send(inviter.ws, {
       v: PROTOCOL_VERSION,
       type: "DELIVERY",
@@ -298,7 +313,9 @@ function handleRouted(ws: WebSocket, frame: RoutedFrame) {
   const maxMsgs = parseInt(process.env["MAX_PENDING_MSGS"] ?? "500", 10);
   const recipient = agents.get(frame.to);
 
-  if (recipient) {
+  // a backpressured recipient is treated as offline: queue instead of
+  // piling more bytes onto its socket buffer
+  if (recipient && canDeliverNow(recipient.ws)) {
     send(recipient.ws, {
       v: PROTOCOL_VERSION,
       type: "DELIVERY",
@@ -322,7 +339,15 @@ function handleRouted(ws: WebSocket, frame: RoutedFrame) {
 function handleConnection(ws: WebSocket, req: IncomingMessage) {
   const remoteIp = req.socket?.remoteAddress ?? "unknown";
   const url = new URL(req.url ?? "/", "http://localhost");
-  const token = url.searchParams.get("token");
+  // Preferred: Authorization header (query strings end up in proxy/tunnel
+  // access logs). The ?token= query param is kept one release for clients
+  // ≤1.15, then will be removed.
+  const authHeader = req.headers["authorization"];
+  const headerToken =
+    typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length)
+      : null;
+  const token = headerToken ?? url.searchParams.get("token");
 
   if (token) {
     const result = verifySessionToken(token);

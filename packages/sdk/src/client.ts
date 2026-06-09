@@ -12,7 +12,11 @@ import {
   type AnyFrame,
   type RoutedFrame,
 } from "@agentroom/protocol";
-import { loadOrCreateIdentity, loadAllSessions, saveSession } from "./identity.js";
+import {
+  loadOrCreateIdentity,
+  loadAllSessions,
+  saveSession,
+} from "./identity.js";
 import {
   SessionStore,
   deriveSessionKeys,
@@ -36,8 +40,8 @@ export interface ConnectOptions {
   autoReconnect?: boolean;
   /** Reconnect behavior overrides */
   reconnect?: {
-    maxAttempts?: number;   // default: Infinity
-    maxBackoffMs?: number;  // default: 60_000
+    maxAttempts?: number; // default: Infinity
+    maxBackoffMs?: number; // default: 60_000
   };
 }
 
@@ -47,8 +51,12 @@ const PRUNE_INTERVAL_MS = 5 * 60_000;
 export class AgentroomClient {
   private ws: WebSocket | null = null;
   private pk = "";
-  private identity: Awaited<ReturnType<typeof loadOrCreateIdentity>> | null = null;
-  private pendingAcks = new Map<string, (status: string, err?: string) => void>();
+  private identity: Awaited<ReturnType<typeof loadOrCreateIdentity>> | null =
+    null;
+  private pendingAcks = new Map<
+    string,
+    (status: string, err?: string) => void
+  >();
   private onMessageHandlers: MessageHandler[] = [];
   private onPeerOnlineHandlers: PeerOnlineHandler[] = [];
   private onDisconnectHandlers: DisconnectHandler[] = [];
@@ -69,11 +77,21 @@ export class AgentroomClient {
   // AbortController to cancel in-flight fetch on disconnect
   private connectAbort: AbortController | null = null;
 
-  onMessage(fn: MessageHandler) { this.onMessageHandlers.push(fn); }
-  onPeerOnline(fn: PeerOnlineHandler) { this.onPeerOnlineHandlers.push(fn); }
-  onDisconnect(fn: DisconnectHandler) { this.onDisconnectHandlers.push(fn); }
-  onReconnect(fn: ReconnectHandler) { this.onReconnectHandlers.push(fn); }
-  onReconnectFailed(fn: ReconnectFailedHandler) { this.onReconnectFailedHandlers.push(fn); }
+  onMessage(fn: MessageHandler) {
+    this.onMessageHandlers.push(fn);
+  }
+  onPeerOnline(fn: PeerOnlineHandler) {
+    this.onPeerOnlineHandlers.push(fn);
+  }
+  onDisconnect(fn: DisconnectHandler) {
+    this.onDisconnectHandlers.push(fn);
+  }
+  onReconnect(fn: ReconnectHandler) {
+    this.onReconnectHandlers.push(fn);
+  }
+  onReconnectFailed(fn: ReconnectFailedHandler) {
+    this.onReconnectFailedHandlers.push(fn);
+  }
 
   async connect(opts: ConnectOptions): Promise<void> {
     await sodiumReady();
@@ -98,7 +116,10 @@ export class AgentroomClient {
 
     // Periodic prune of skipped keys
     if (!this.pruneTimer) {
-      this.pruneTimer = setInterval(() => this._pruneAllSkippedKeys(), PRUNE_INTERVAL_MS);
+      this.pruneTimer = setInterval(
+        () => this._pruneAllSkippedKeys(),
+        PRUNE_INTERVAL_MS,
+      );
       this.pruneTimer.unref?.();
     }
   }
@@ -107,21 +128,27 @@ export class AgentroomClient {
   private async _doConnect(): Promise<void> {
     if (!this.identity) throw new Error("identity not loaded");
 
-    // Fast-path: reconnect with existing session token
+    // Fast-path: reconnect with existing session token, sent as an
+    // Authorization header so it never lands in proxy/tunnel access logs
     if (this.sessionToken) {
-      const tokenUrl = `${this.serverUrl}?token=${encodeURIComponent(this.sessionToken)}`;
-      const connected = await this._openWs(tokenUrl, false);
+      const connected = await this._openWs(this.serverUrl, false, undefined, {
+        authorization: `Bearer ${this.sessionToken}`,
+      });
       if (connected) return;
       // Token rejected → fall through to full HELLO
       this.sessionToken = null;
     }
 
     // Full HELLO handshake — fetch challenge with AbortController (A4)
-    const httpBase = this.serverUrl.replace(/^wss?:\/\//, "http://").replace(/\/ws$/, "");
+    const httpBase = this.serverUrl
+      .replace(/^wss?:\/\//, "http://")
+      .replace(/\/ws$/, "");
     this.connectAbort = new AbortController();
     let resp: Response;
     try {
-      resp = await fetch(`${httpBase}/auth/challenge`, { signal: this.connectAbort.signal });
+      resp = await fetch(`${httpBase}/auth/challenge`, {
+        signal: this.connectAbort.signal,
+      });
     } finally {
       this.connectAbort = null;
     }
@@ -129,7 +156,7 @@ export class AgentroomClient {
       const hint = resp.status === 429 ? " (rate limited — retry in ~60s)" : "";
       throw new Error(`challenge request failed: ${resp.status}${hint}`);
     }
-    const { challenge } = await resp.json() as { challenge: string };
+    const { challenge } = (await resp.json()) as { challenge: string };
     await this._openWs(this.serverUrl, true, challenge);
   }
 
@@ -138,11 +165,25 @@ export class AgentroomClient {
    * If `withHello=true` sends a HELLO frame; otherwise waits for first DELIVERY or ERROR.
    * Returns true on success, false if rejected (token expired etc.).
    */
-  private _openWs(wsUrl: string, withHello: true, challenge: string): Promise<void>;
-  private _openWs(wsUrl: string, withHello: false): Promise<boolean>;
-  private _openWs(wsUrl: string, withHello: boolean, challenge?: string): Promise<unknown> {
+  private _openWs(
+    wsUrl: string,
+    withHello: true,
+    challenge: string,
+  ): Promise<void>;
+  private _openWs(
+    wsUrl: string,
+    withHello: false,
+    challenge?: undefined,
+    headers?: Record<string, string>,
+  ): Promise<boolean>;
+  private _openWs(
+    wsUrl: string,
+    withHello: boolean,
+    challenge?: string,
+    headers?: Record<string, string>,
+  ): Promise<unknown> {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(wsUrl, headers ? { headers } : undefined);
       this.ws = ws;
 
       // `settled` guards the promise so that error+close (which can both fire on
@@ -154,7 +195,11 @@ export class AgentroomClient {
       // two concurrent reconnect loops.
       let settled = false;
       let established = false;
-      const settle = (cb: () => void) => { if (settled) return; settled = true; cb(); };
+      const settle = (cb: () => void) => {
+        if (settled) return;
+        settled = true;
+        cb();
+      };
 
       ws.once("open", async () => {
         if (!withHello) return; // token auth: just wait for server-side flush
@@ -174,8 +219,11 @@ export class AgentroomClient {
 
       const onFirstMessage = async (raw: Buffer | ArrayBuffer | Buffer[]) => {
         let parsed: unknown;
-        try { parsed = JSON.parse(raw.toString()); }
-        catch { return; }
+        try {
+          parsed = JSON.parse(raw.toString());
+        } catch {
+          return;
+        }
         const result = parseFrame(parsed);
         if (!result.ok) return;
         const frame = result.data;
@@ -185,7 +233,9 @@ export class AgentroomClient {
           ws.off("message", onFirstMessage);
           ws.on("message", this._handleRawMessage.bind(this));
           established = true;
-          settle(() => { if (withHello) (resolve as () => void)(); });
+          settle(() => {
+            if (withHello) (resolve as () => void)();
+          });
           return;
         }
 
@@ -217,9 +267,13 @@ export class AgentroomClient {
         if (!settled) {
           // Closed mid-handshake: propagate to the caller, which owns retry.
           // (Token auth resolves false → caller falls through to full HELLO.)
-          settle(() => withHello
-            ? reject(new Error(`connection closed during handshake: ${reasonStr}`))
-            : (resolve as (v: boolean) => void)(false));
+          settle(() =>
+            withHello
+              ? reject(
+                  new Error(`connection closed during handshake: ${reasonStr}`),
+                )
+              : (resolve as (v: boolean) => void)(false),
+          );
           return;
         }
 
@@ -236,17 +290,25 @@ export class AgentroomClient {
     });
   }
 
-  private async _handleRawMessage(raw: Buffer | ArrayBuffer | Buffer[]): Promise<void> {
+  private async _handleRawMessage(
+    raw: Buffer | ArrayBuffer | Buffer[],
+  ): Promise<void> {
     let parsed: unknown;
-    try { parsed = JSON.parse(raw.toString()); }
-    catch { return; }
+    try {
+      parsed = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
     const result = parseFrame(parsed);
     if (!result.ok) return;
     // wrap in try/catch to prevent unhandled rejection crashing the process
     try {
       await this._handleFrame(result.data);
     } catch (err) {
-      console.warn("[sdk] error handling frame:", err instanceof Error ? err.message : err);
+      console.warn(
+        "[sdk] error handling frame:",
+        err instanceof Error ? err.message : err,
+      );
     }
   }
 
@@ -258,8 +320,12 @@ export class AgentroomClient {
       return;
     }
 
-    const backoffSteps = DEFAULT_BACKOFF.map((ms) => Math.min(ms, this.reconnectMaxBackoffMs));
-    const delay = backoffSteps[Math.min(this.reconnectAttempt, backoffSteps.length - 1)] ?? this.reconnectMaxBackoffMs;
+    const backoffSteps = DEFAULT_BACKOFF.map((ms) =>
+      Math.min(ms, this.reconnectMaxBackoffMs),
+    );
+    const delay =
+      backoffSteps[Math.min(this.reconnectAttempt, backoffSteps.length - 1)] ??
+      this.reconnectMaxBackoffMs;
     this.reconnectAttempt++;
 
     await new Promise<void>((resolve) => {
@@ -273,7 +339,8 @@ export class AgentroomClient {
       this.reconnectAttempt = 0;
       for (const h of this.onReconnectHandlers) h();
     } catch {
-      if (!this.destroyed && this.reconnectEnabled) void this._scheduleReconnect();
+      if (!this.destroyed && this.reconnectEnabled)
+        void this._scheduleReconnect();
     }
   }
 
@@ -295,7 +362,10 @@ export class AgentroomClient {
         break;
       case "ACK": {
         const cb = this.pendingAcks.get(frame.ref_msg_id);
-        if (cb) { cb(frame.status, frame.error); this.pendingAcks.delete(frame.ref_msg_id); }
+        if (cb) {
+          cb(frame.status, frame.error);
+          this.pendingAcks.delete(frame.ref_msg_id);
+        }
         break;
       }
       case "PING":
@@ -306,17 +376,34 @@ export class AgentroomClient {
 
   private async _handleDelivery(routed: RoutedFrame) {
     const sigPayload = new TextEncoder().encode(
-      JSON.stringify({ from: routed.from, to: routed.to, seq: routed.seq, nonce: routed.nonce }),
+      JSON.stringify({
+        from: routed.from,
+        to: routed.to,
+        seq: routed.seq,
+        nonce: routed.nonce,
+      }),
     );
     const valid = await verifyFrameSig(sigPayload, routed.sig, routed.from);
-    if (!valid) { console.warn("[sdk] invalid frame signature from", routed.from); return; }
+    if (!valid) {
+      console.warn("[sdk] invalid frame signature from", routed.from);
+      return;
+    }
 
-    if (routed.type === "SESSION_INIT") { await this._handleSessionInit(routed); return; }
-    if (routed.type === "SESSION_ACK")  { await this._handleSessionAck(routed); return; }
+    if (routed.type === "SESSION_INIT") {
+      await this._handleSessionInit(routed);
+      return;
+    }
+    if (routed.type === "SESSION_ACK") {
+      await this._handleSessionAck(routed);
+      return;
+    }
 
     // MSG
     const session = this.store.get(routed.from);
-    if (!session) { console.warn("[sdk] no session for", routed.from); return; }
+    if (!session) {
+      console.warn("[sdk] no session for", routed.from);
+      return;
+    }
     const plainBytes = await decryptMessage(
       session,
       routed.ciphertext,
@@ -336,7 +423,10 @@ export class AgentroomClient {
     // never overwrite an existing session with a new SESSION_INIT:
     // a malicious authenticated peer could send spurious SESSION_INIT to destroy sessions.
     if (this.store.has(routed.from)) {
-      console.warn("[sdk] ignoring duplicate SESSION_INIT from", routed.from.slice(0, 8));
+      console.warn(
+        "[sdk] ignoring duplicate SESSION_INIT from",
+        routed.from.slice(0, 8),
+      );
       return;
     }
 
@@ -359,11 +449,21 @@ export class AgentroomClient {
     });
     saveSession(session.peerPk, session, this.home);
 
-    const ackPlain = new TextEncoder().encode(JSON.stringify({ ack: initPayload.nonce }));
-    const { ciphertext: ackCiphertext, nonce: ackNonceOut } = await seal(ackPlain, bootstrapKeys.sendKey);
+    const ackPlain = new TextEncoder().encode(
+      JSON.stringify({ ack: initPayload.nonce }),
+    );
+    const { ciphertext: ackCiphertext, nonce: ackNonceOut } = await seal(
+      ackPlain,
+      bootstrapKeys.sendKey,
+    );
 
     const sigPayload = new TextEncoder().encode(
-      JSON.stringify({ from: this.pk, to: routed.from, seq: 0, nonce: toBase64(ackNonceOut) }),
+      JSON.stringify({
+        from: this.pk,
+        to: routed.from,
+        seq: 0,
+        nonce: toBase64(ackNonceOut),
+      }),
     );
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
 
@@ -385,12 +485,17 @@ export class AgentroomClient {
 
   private async _handleSessionAck(routed: RoutedFrame) {
     const session = this.store.get(routed.from);
-    if (!session) { console.warn("[sdk] SESSION_ACK without prior session for", routed.from); return; }
+    if (!session) {
+      console.warn("[sdk] SESSION_ACK without prior session for", routed.from);
+      return;
+    }
     saveSession(session.peerPk, session, this.home);
     for (const h of this.onPeerOnlineHandlers) h(routed.from);
   }
 
-  async createInvite(serverUrl?: string): Promise<{ url: string; invite_id: string }> {
+  async createInvite(
+    serverUrl?: string,
+  ): Promise<{ url: string; invite_id: string }> {
     if (!this.identity) throw new Error("not connected");
     const url = serverUrl ?? this.serverUrl;
     const { signed, url: inviteUrl } = await createInvite(
@@ -431,11 +536,15 @@ export class AgentroomClient {
 
     // Seed the DH ratchet (PCS). We are the invitee → do NOT initiate (the inviter does),
     // which keeps the first DH step one-sided and rotation strictly alternating.
-    const session = await this.store.init(blob.inviter_ed25519_pk, bootstrapKeys, {
-      identity: this.identity,
-      peerX25519Pk: fromBase64(blob.inviter_x25519_pk),
-      initiateRatchet: false,
-    });
+    const session = await this.store.init(
+      blob.inviter_ed25519_pk,
+      bootstrapKeys,
+      {
+        identity: this.identity,
+        peerX25519Pk: fromBase64(blob.inviter_x25519_pk),
+        initiateRatchet: false,
+      },
+    );
     saveSession(session.peerPk, session, this.home);
 
     const initPayload = JSON.stringify({
@@ -445,7 +554,12 @@ export class AgentroomClient {
     const ciphertextB64 = toBase64(new TextEncoder().encode(initPayload));
 
     const sigPayload = new TextEncoder().encode(
-      JSON.stringify({ from: this.pk, to: blob.inviter_ed25519_pk, seq: 0, nonce: ciphertextB64 }),
+      JSON.stringify({
+        from: this.pk,
+        to: blob.inviter_ed25519_pk,
+        seq: 0,
+        nonce: ciphertextB64,
+      }),
     );
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
 
@@ -472,12 +586,15 @@ export class AgentroomClient {
     if (!session) {
       throw new Error(
         `No session with ${peerPk}.\nRun first: agentroom invite create --server <url>` +
-        `\nor: agentroom invite accept '<url>' --server <url>`,
+          `\nor: agentroom invite accept '<url>' --server <url>`,
       );
     }
 
     const plaintext = new TextEncoder().encode(text);
-    const { ciphertext, nonce, ratchet_pk } = await encryptMessage(session, plaintext);
+    const { ciphertext, nonce, ratchet_pk } = await encryptMessage(
+      session,
+      plaintext,
+    );
     const seq = session.sendSeq - 1;
 
     // Persist updated session before sending (so even if ACK fails, state is consistent)
@@ -505,8 +622,12 @@ export class AgentroomClient {
     });
   }
 
-  peers(): string[] { return this.store.list(); }
-  publicKey(): string { return this.pk; }
+  peers(): string[] {
+    return this.store.list();
+  }
+  publicKey(): string {
+    return this.pk;
+  }
 
   disconnect() {
     this.destroyed = true;
@@ -538,7 +659,11 @@ export class AgentroomClient {
     for (const peerPk of this.store.list()) {
       const session = this.store.get(peerPk);
       if (session) {
-        try { saveSession(peerPk, session, this.home); } catch { /* best-effort */ }
+        try {
+          saveSession(peerPk, session, this.home);
+        } catch {
+          /* best-effort */
+        }
       }
     }
 
@@ -550,7 +675,11 @@ export class AgentroomClient {
       const session = this.store.get(peerPk);
       if (session) {
         pruneSkippedInPlace(session);
-        try { saveSession(peerPk, session, this.home); } catch { /* best-effort */ }
+        try {
+          saveSession(peerPk, session, this.home);
+        } catch {
+          /* best-effort */
+        }
       }
     }
   }

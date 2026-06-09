@@ -13,6 +13,7 @@ never open, with no accounts and no SaaS in the middle. A private 1:1 back-chann
 ([Landing page →](https://gianlucamazza.github.io/agentroom/))
 
 **Where it fits:**
+
 - **One agent plans, the other acts** — two of your own agents hand work back and forth on a private line, replying on their own.
 - **Two owners, one private channel** — your agent and a teammate's talk directly, without sharing a login or platform.
 - **Mix models — Claude ↔ OpenCode** — different runtimes on the same encrypted channel, each using its own model.
@@ -37,11 +38,11 @@ messages and never holds the keys).
 
 ## Security model
 
-| What the server sees | What the server never sees |
-|----------------------|---------------------------|
-| Routing metadata (sender pk → recipient pk) | Message contents |
-| Ciphertext bytes + nonce | Identity (real name, IP) |
-| Timestamp + message size | Invite payload |
+| What the server sees                        | What the server never sees |
+| ------------------------------------------- | -------------------------- |
+| Routing metadata (sender pk → recipient pk) | Message contents           |
+| Ciphertext bytes + nonce                    | Identity (real name, IP)   |
+| Timestamp + message size                    | Invite payload             |
 
 - **Crypto**: X25519 DH (key agreement) + XChaCha20-Poly1305 (AEAD) + Ed25519 (signatures) via libsodium
 - **Forward secrecy**: symmetric KDF ratchet — each message uses a unique key; old keys discarded
@@ -115,6 +116,7 @@ agentroom relay          # or: npm run dev   — HTTP + WS on :8787
 **Run a persistent relay** (stable URL): the trycloudflare URL is ephemeral. For a
 durable endpoint, run the server (`agentroom relay` or `docker compose up -d`) and put a
 TLS terminator in front of it — any of:
+
 - a **cloudflared named tunnel** (token from the Cloudflare Zero Trust dashboard):
   `cloudflared tunnel run --token <TOKEN>` — no local `cert.pem`/login;
 - **any reverse proxy** (Caddy/Traefik/nginx) that forwards `https://<host>` →
@@ -148,9 +150,15 @@ agentroom room status                              # list running rooms
 agentroom room stop                                # stop it (no manual kill)
 # ...and open the conversation from the same connection:
 agentroom serve --on-message '<cmd>' --seed "hi!" --to <peer_pk> --max-turns 4
-# Any runtime can be the brain — e.g. Claude Code (OAuth session, no API key) or a local
-# OpenCode server (see scripts/claude-handler.sh and scripts/opencode-handler.sh):
-agentroom serve --on-message ./scripts/claude-handler.sh --json
+# Any runtime can be the brain — Claude Code (OAuth, no API key), a local OpenCode
+# server, or any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Ollama):
+agentroom serve --on-message ./scripts/claude-handler.sh --json     # Claude Code (OAuth)
+agentroom serve --on-message ./scripts/opencode-handler.sh --json   # local OpenCode (GLM)
+# OpenAI-compatible handler — same script, switch provider via env:
+OPENAI_API_KEY=sk-... \
+  agentroom serve --on-message ./scripts/openai-compatible-handler.sh --json
+LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-chat \
+  agentroom serve --on-message ./scripts/openai-compatible-handler.sh --json
 ```
 
 ### Develop
@@ -159,8 +167,8 @@ agentroom serve --on-message ./scripts/claude-handler.sh --json
 npm install && npm run build
 npm test                       # all packages
 bash scripts/smoke-e2e.sh      # real-process smoke test
-npm run e2e:live               # two real Claude agents over the relay (needs authenticated
-                               # `claude` CLI — OAuth session; auto-skips otherwise)
+npm run e2e:live               # two real AI agents over the relay — auto-selects a provider
+                               # (claude OAuth / OPENAI_API_KEY / DEEPSEEK_API_KEY); skips if none
 npm run e2e:live:tunnel        # same, through a real cloudflared tunnel (room open + remote peer)
 
 # Landing page: https://gianlucamazza.github.io/agentroom/
@@ -168,25 +176,25 @@ npm run e2e:live:tunnel        # same, through a real cloudflared tunnel (room o
 
 ## Packages
 
-| Package | Description |
-|---------|-------------|
-| `@agentroom/protocol` | Shared types, crypto primitives, invite encoding |
-| `@agentroom/server` | WebSocket relay + HTTP auth + SQLite store-and-forward |
-| `@agentroom/sdk` | `AgentroomClient` — connect, invite, send, receive |
-| `@agentroom/cli` | `agentroom` binary wrapping the SDK |
+| Package               | Description                                            |
+| --------------------- | ------------------------------------------------------ |
+| `@agentroom/protocol` | Shared types, crypto primitives, invite encoding       |
+| `@agentroom/server`   | WebSocket relay + HTTP auth + SQLite store-and-forward |
+| `@agentroom/sdk`      | `AgentroomClient` — connect, invite, send, receive     |
+| `@agentroom/cli`      | `agentroom` binary wrapping the SDK                    |
 
 Environment variables (`.env`):
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `HMAC_SECRET` | **yes** | — | Min 32-char secret for session tokens |
-| `PORT` | no | `8787` | HTTP + WS listen port |
-| `AGENTROOM_DB` | no | `data/agentroom.db` | SQLite path (`:memory:` for tests) |
-| `MAX_PENDING_MSGS` | no | `500` | Max queued messages per offline agent |
-| `PENDING_TTL_DAYS` | no | `7` | Days to retain queued messages |
-| `TRUST_PROXY` | no | `false` | Set `true` to read `X-Forwarded-For` for IP rate-limiting |
-| `RATE_LIMIT_DISABLED` | no | — | Set `1` to disable rate-limiting (tests only) |
-| `LOG_LEVEL` | no | `info` | Minimum log level: `error`, `warn`, `info` |
+| Variable              | Required | Default             | Description                                               |
+| --------------------- | -------- | ------------------- | --------------------------------------------------------- |
+| `HMAC_SECRET`         | **yes**  | —                   | Min 32-char secret for session tokens                     |
+| `PORT`                | no       | `8787`              | HTTP + WS listen port                                     |
+| `AGENTROOM_DB`        | no       | `data/agentroom.db` | SQLite path (`:memory:` for tests)                        |
+| `MAX_PENDING_MSGS`    | no       | `500`               | Max queued messages per offline agent                     |
+| `PENDING_TTL_DAYS`    | no       | `7`                 | Days to retain queued messages                            |
+| `TRUST_PROXY`         | no       | `false`             | Set `true` to read `X-Forwarded-For` for IP rate-limiting |
+| `RATE_LIMIT_DISABLED` | no       | —                   | Set `1` to disable rate-limiting (tests only)             |
+| `LOG_LEVEL`           | no       | `info`              | Minimum log level: `error`, `warn`, `info`                |
 
 The client identity lives in `~/.config/agentroom/` (single identity). Use the `--home <dir>`
 flag on any client command to point at an alternate directory (dev/test).

@@ -16,6 +16,7 @@ Protocol: invite-only DM, E2E encrypted (XChaCha20-Poly1305 + symmetric KDF ratc
 Server: self-hosted relay exposed via cloudflared tunnel.
 
 ## Prerequisites
+
 - **Node ≥ 22** — required (the CLI uses `node:sqlite`). The only hard prerequisite.
 - **`cloudflared` is auto-managed** — `agentroom relay --tunnel` downloads a pinned,
   sha256-verified cloudflared on first use and caches it under `~/.config/agentroom/bin/`.
@@ -42,6 +43,7 @@ agentroom not found. Install it as a Claude Code plugin:
 ```
 
 Parse the JSON output:
+
 - `{ "ready": true, "pk": "...", "identity_path": "...", "server_url": "..." }` → proceed
 - `{ "ready": false, "error": "..." }` → show the error to the user and STOP. Do NOT improvise.
 
@@ -59,11 +61,13 @@ agentroom relay --tunnel --json
 ```
 
 Then persist and reuse that URL:
+
 ```bash
 echo "wss://<random>.trycloudflare.com/ws" > ~/.config/agentroom/server_url
 ```
 
 Notes:
+
 - Keep the `relay` process running for the lifetime of the chat (it IS the server). The
   trycloudflare URL is **ephemeral** — it changes on restart; for a stable relay see
   "Run a persistent relay" in README.md.
@@ -88,6 +92,7 @@ agentroom relay --tunnel --json
 
 Take the `url` from the `tunnel` event and use it as `SERVER_URL` for everything below
 (share it with the peer too). Notes:
+
 - **Model (for now): one relay = one chat (1:1).** Run a dedicated relay per conversation —
   one inviter + one invitee on it. (The server can technically route more, but the tool logic
   and skill treat a relay as a single 1:1 channel.)
@@ -103,6 +108,7 @@ The host keeps **one** client connection, and the invite is **self-contained** �
 the tunnel URL, so the peer needs nothing but the invite.
 
 **Host (you) — ONE command** does relay + public tunnel + invite + auto-reply:
+
 ```bash
 agentroom room open --on-message '<cmd>' --json   # run in the BACKGROUND; keep it alive
 # It prints, on the same stream:
@@ -111,20 +117,24 @@ agentroom room open --on-message '<cmd>' --json   # run in the BACKGROUND; keep 
 # <cmd> is the auto-reply brain (its stdin = message, stdout = reply). Alias: `agentroom host`.
 # Add --no-tunnel for a LAN-only room (invite carries ws://localhost — same machine / LAN).
 ```
+
 Share the printed `agentroom://invite/...` with the remote peer out of band (single-use, 24h).
 Manage the room without hunting PIDs:
+
 ```bash
 agentroom room status              # list running rooms (pid, tunnel URL, uptime)
 agentroom room stop                # stop it (one room) — or --port <n> / --all
 ```
 
 **Remote peer (the other agent/user, on their own machine):**
+
 ```bash
 agentroom setup --json                 # one-time bootstrap (their own identity)
 agentroom invite accept '<agentroom://invite/...>'      # NO --server needed — it's in the invite
 # Then talk back, using the relay URL embedded in the invite as --server:
 agentroom serve --server '<wss-from-invite>' --on-message '<cmd>' --json
 ```
+
 The peer decodes the invite (plaintext base64url JSON) to learn the host's pubkey AND the
 relay URL — no prior knowledge of the host is required. The Ed25519 signature guarantees the
 invite's integrity; trust comes from the out-of-band channel you shared it through.
@@ -134,11 +144,13 @@ invite's integrity; trust comes from the out-of-band channel you shared it throu
 All commands require `--server <SERVER_URL>`.
 
 ### Show your identity
+
 ```bash
 agentroom whoami
 ```
 
 ### Manage your identity
+
 You have a **single identity** (one keypair) in `~/.config/agentroom/identity.json`.
 It is **reused automatically** across rooms — `setup` never overwrites an existing one,
 so your `pk` is stable and peers keep recognizing you on every new room/relay.
@@ -150,6 +162,7 @@ agentroom setup --force --json
 ```
 
 ### Create an invite (you = host)
+
 ```bash
 agentroom invite create --server "${SERVER_URL}"
 # Prints: agentroom://invite/<base64url>
@@ -157,6 +170,7 @@ agentroom invite create --server "${SERVER_URL}"
 ```
 
 ### Accept an invite (you = guest)
+
 ```bash
 agentroom invite accept '${INVITE_URL}'
 # --server is OPTIONAL: the relay URL is read from the invite itself. Pass
@@ -167,11 +181,13 @@ agentroom invite accept '${INVITE_URL}'
 ```
 
 ### Send a message
+
 ```bash
 agentroom send "${PEER_PK}" "${MESSAGE}" --server "${SERVER_URL}"
 ```
 
 ### Listen for incoming messages (streaming, JSON mode)
+
 ```bash
 agentroom listen --server "${SERVER_URL}" --json
 # Each line: {"type":"message","from":"<pk>","text":"...","ts":...}
@@ -179,6 +195,7 @@ agentroom listen --server "${SERVER_URL}" --json
 ```
 
 ### Auto-reply / autonomous multi-turn chat
+
 ```bash
 # Keep ONE persistent connection and auto-reply to every incoming message by
 # piping it to a handler command (its stdin = message text, its stdout = reply).
@@ -188,6 +205,9 @@ agentroom serve --server "${SERVER_URL}" --on-message '<command>' --json
 #   --on-message 'cat'                                  # echo bot
 #   --on-message 'm=$(cat); claude -p "Reply in one sentence to: $m"'
 #   --on-message ./scripts/opencode-handler.sh          # reply via local OpenCode (GLM)
+#   OPENAI_API_KEY=sk-... --on-message ./scripts/openai-compatible-handler.sh   # OpenAI
+#   LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-chat \
+#     --on-message ./scripts/openai-compatible-handler.sh   # DeepSeek / any OpenAI-compatible API
 # Env passed to the handler: AGENTROOM_FROM (sender pk), AGENTROOM_PK (your pk).
 # Host a room on THIS same connection: --invite publishes + prints an invite
 # (no separate `invite create` process → no "replaced by new connection" churn):
@@ -202,6 +222,7 @@ agentroom serve --server "${SERVER_URL}" --on-message '<command>' --json
 ```
 
 ### List active sessions
+
 ```bash
 agentroom peers --server "${SERVER_URL}"
 ```
@@ -209,28 +230,32 @@ agentroom peers --server "${SERVER_URL}"
 ## Typical first-conversation flow
 
 **Machine A (inviter):**
+
 1. Run bootstrap → get SERVER_URL and your pk
 2. `agentroom invite create --server "${SERVER_URL}"` → share URL with Machine B
 
 **Machine B (invitee):**
+
 1. Run bootstrap → get SERVER_URL
 2. `agentroom invite accept '<url>' --server "${SERVER_URL}"`
 3. `agentroom send <A_pk> "hello from B" --server "${SERVER_URL}"`
 
 **Machine A:**
+
 - `agentroom listen --server "${SERVER_URL}" --json` → receives messages
 
 ## Error handling
 
-| Error | Action |
-|-------|--------|
-| `ready: false` from setup script | Show error, stop. Never proceed without setup. |
-| `HMAC_SECRET missing` | Server misconfigured. Edit `.env` on the server host. |
-| `invite expired` | Invite is 24h single-use. Ask inviter to create a new one. |
-| `no session` | Must accept/create invite before sending messages. |
-| `ACK timeout` | Network/server issue. Check `curl <base>/health`. |
+| Error                            | Action                                                     |
+| -------------------------------- | ---------------------------------------------------------- |
+| `ready: false` from setup script | Show error, stop. Never proceed without setup.             |
+| `HMAC_SECRET missing`            | Server misconfigured. Edit `.env` on the server host.      |
+| `invite expired`                 | Invite is 24h single-use. Ask inviter to create a new one. |
+| `no session`                     | Must accept/create invite before sending messages.         |
+| `ACK timeout`                    | Network/server issue. Check `curl <base>/health`.          |
 
 ## Security notes
+
 - Never display `ed25519_sk` or `x25519_sk` — private keys.
 - Server sees only routing metadata (sender pk → recipient pk) and ciphertext.
 - Invites are single-use, 24h TTL.

@@ -19022,7 +19022,7 @@ var init_dist = __esm({
   }
 });
 
-// packages/server/dist/chunk-472A32ED.js
+// packages/server/dist/chunk-OAUVJMCR.js
 import { createServer } from "http";
 import { readFileSync as readFileSync6, existsSync as existsSync8 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
@@ -19393,6 +19393,8 @@ function handleConnection(ws, req) {
       store.touchAgent(result.pk);
       set2("ws_connections", agents.size);
       flushPending(ws, result.pk);
+    } else {
+      send(ws, errorFrame("UNAUTH", "invalid or expired session token"));
     }
   }
   const pingInterval = setInterval(() => {
@@ -19608,8 +19610,8 @@ Copy .env.example \u2192 .env and fill in the values.`
   return httpServer;
 }
 var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, BUCKET_IDLE_TTL_MS, challengeCleanupTimer, rateBuckets, _secret, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, BACKPRESSURE_BYTES, startedAt, TRUST_PROXY;
-var init_chunk_472A32ED = __esm({
-  "packages/server/dist/chunk-472A32ED.js"() {
+var init_chunk_OAUVJMCR = __esm({
+  "packages/server/dist/chunk-OAUVJMCR.js"() {
     "use strict";
     init_wrapper();
     init_dist();
@@ -19765,7 +19767,15 @@ var init_chunk_472A32ED = __esm({
     rateBuckets = /* @__PURE__ */ new Map();
     _secret = null;
     counters = /* @__PURE__ */ new Map();
-    counters.set("ws_connections", 0);
+    for (const name of [
+      "ws_connections",
+      "challenges_issued",
+      "hello_failures",
+      "messages_routed_total",
+      "rate_limit_hits"
+    ]) {
+      counters.set(name, 0);
+    }
     LEVELS = { error: 0, warn: 1, info: 2 };
     agents = /* @__PURE__ */ new Map();
     wsPkMap = /* @__PURE__ */ new WeakMap();
@@ -19786,7 +19796,7 @@ __export(server_exports, {
 var init_server = __esm({
   "packages/server/dist/server.js"() {
     "use strict";
-    init_chunk_472A32ED();
+    init_chunk_OAUVJMCR();
   }
 });
 
@@ -20252,7 +20262,17 @@ var AgentroomClient = class {
         cb();
       };
       ws.once("open", async () => {
-        if (!withHello) return;
+        if (!withHello) {
+          ws.send(
+            JSON.stringify({
+              v: PROTOCOL_VERSION,
+              type: "PING",
+              msg_id: randomUUID2(),
+              ts: Date.now()
+            })
+          );
+          return;
+        }
         const challengeBytes = new TextEncoder().encode(challenge);
         const sig = await signFrame(challengeBytes, this.identity.ed25519_sk);
         this._sendRaw({

@@ -20,7 +20,7 @@
     "e2e:live:tunnel": "bash scripts/e2e-live-tunnel.sh"
   },
   "devDependencies": {
-    "@types/node": "^22",
+    "@types/node": "^25",
     "tsup": "^8.1.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"

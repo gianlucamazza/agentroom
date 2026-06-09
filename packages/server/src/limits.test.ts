@@ -11,8 +11,9 @@ import {
   type AgentKeypair,
 } from "@agentroom/protocol";
 import { store } from "./store.js";
-import { attachWss } from "./ws.js";
+import { attachWss, flushPending, canDeliverNow } from "./ws.js";
 import { handleRequest } from "./routes.js";
+import { issueSessionToken } from "./auth.js";
 
 let srv: Server;
 let url: string;
@@ -223,5 +224,78 @@ describe("connection cap", () => {
       delete process.env["MAX_CONNECTIONS"];
       srv2.close();
     }
+  });
+});
+
+describe("backpressure", () => {
+  function fakeWs(bufferedAmount: number) {
+    const sent: string[] = [];
+    return {
+      ws: {
+        readyState: WebSocket.OPEN,
+        bufferedAmount,
+        send(data: string) {
+          sent.push(data);
+        },
+      } as unknown as WebSocket,
+      sent,
+    };
+  }
+
+  it("canDeliverNow is false past the buffered-bytes threshold", () => {
+    expect(canDeliverNow(fakeWs(0).ws)).toBe(true);
+    expect(canDeliverNow(fakeWs(2 * 1024 * 1024).ws)).toBe(false);
+  });
+
+  it("flushPending stops on a backpressured socket and keeps messages queued", () => {
+    const pk = `bp-${randomUUID()}`;
+    store.enqueuePending(randomUUID(), pk, JSON.stringify({ test: 1 }));
+    store.enqueuePending(randomUUID(), pk, JSON.stringify({ test: 2 }));
+
+    const slow = fakeWs(2 * 1024 * 1024);
+    flushPending(slow.ws, pk);
+    expect(slow.sent).toHaveLength(0);
+    expect(store.countPending(pk)).toBe(2); // nothing lost, nothing delivered
+
+    const fast = fakeWs(0);
+    flushPending(fast.ws, pk);
+    expect(fast.sent).toHaveLength(2);
+    expect(store.countPending(pk)).toBe(0);
+  });
+});
+
+describe("session resume", () => {
+  async function expectDeliveryOn(makeWs: () => WebSocket, pk: string) {
+    store.enqueuePending(randomUUID(), pk, JSON.stringify({ test: "resume" }));
+    const ws = makeWs();
+    const first = await new Promise<Record<string, unknown>>((res, rej) => {
+      const t = setTimeout(() => rej(new Error("no delivery")), 2000);
+      ws.once("message", (raw) => {
+        clearTimeout(t);
+        res(JSON.parse(raw.toString()) as Record<string, unknown>);
+      });
+      ws.once("error", rej);
+    });
+    expect(first["type"]).toBe("DELIVERY");
+    ws.close();
+  }
+
+  it("authenticates via Authorization: Bearer header (preferred)", async () => {
+    const pk = `resume-header-${randomUUID()}`;
+    const token = issueSessionToken(pk);
+    await expectDeliveryOn(
+      () =>
+        new WebSocket(url, { headers: { authorization: `Bearer ${token}` } }),
+      pk,
+    );
+  });
+
+  it("still accepts ?token= query param (legacy clients)", async () => {
+    const pk = `resume-query-${randomUUID()}`;
+    const token = issueSessionToken(pk);
+    await expectDeliveryOn(
+      () => new WebSocket(`${url}?token=${encodeURIComponent(token)}`),
+      pk,
+    );
   });
 });

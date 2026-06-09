@@ -19022,7 +19022,7 @@ var init_dist = __esm({
   }
 });
 
-// packages/server/dist/chunk-ZAAZVQWC.js
+// packages/server/dist/chunk-472A32ED.js
 import { createServer } from "http";
 import { readFileSync as readFileSync6, existsSync as existsSync8 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
@@ -19159,6 +19159,9 @@ function send(ws, data) {
     ws.send(JSON.stringify(data));
   }
 }
+function canDeliverNow(ws) {
+  return ws.readyState === import_websocket.default.OPEN && ws.bufferedAmount <= BACKPRESSURE_BYTES;
+}
 function errorFrame(code, message) {
   return {
     v: PROTOCOL_VERSION,
@@ -19183,20 +19186,23 @@ function ackFrame(ref_msg_id, status, error51) {
 function flushPending(ws, pk) {
   const pending = store.dequeuePending(pk);
   for (const { id, envelope } of pending) {
+    let routed;
     try {
-      const routed = JSON.parse(envelope);
-      if (ws.readyState !== import_websocket.default.OPEN) break;
-      send(ws, {
-        v: PROTOCOL_VERSION,
-        type: "DELIVERY",
-        msg_id: randomUUID3(),
-        ts: Date.now(),
-        routed
-      });
-      store.deletePending(id);
+      routed = JSON.parse(envelope);
     } catch {
+      logEvent("warn", "pending.dropped_malformed", { id });
       store.deletePending(id);
+      continue;
     }
+    if (!canDeliverNow(ws)) break;
+    send(ws, {
+      v: PROTOCOL_VERSION,
+      type: "DELIVERY",
+      msg_id: randomUUID3(),
+      ts: Date.now(),
+      routed
+    });
+    store.deletePending(id);
   }
 }
 async function handleHello(ws, frame, remoteIp) {
@@ -19305,7 +19311,9 @@ async function handleInviteClaim(ws, frame) {
     return;
   }
   const maxMsgs = parseInt(process.env["MAX_PENDING_MSGS"] ?? "500", 10);
-  if (!agents.has(invite.inviter_pk) && store.countPending(invite.inviter_pk) >= maxMsgs) {
+  const inviter = agents.get(invite.inviter_pk);
+  const deliverNow = inviter !== void 0 && canDeliverNow(inviter.ws);
+  if (!deliverNow && store.countPending(invite.inviter_pk) >= maxMsgs) {
     send(ws, ackFrame(frame.msg_id, "error", "recipient queue full"));
     return;
   }
@@ -19326,8 +19334,7 @@ async function handleInviteClaim(ws, frame) {
     sig: frame.sig,
     seq: 0
   };
-  const inviter = agents.get(invite.inviter_pk);
-  if (inviter) {
+  if (deliverNow && inviter) {
     send(inviter.ws, {
       v: PROTOCOL_VERSION,
       type: "DELIVERY",
@@ -19352,7 +19359,7 @@ function handleRouted(ws, frame) {
   }
   const maxMsgs = parseInt(process.env["MAX_PENDING_MSGS"] ?? "500", 10);
   const recipient = agents.get(frame.to);
-  if (recipient) {
+  if (recipient && canDeliverNow(recipient.ws)) {
     send(recipient.ws, {
       v: PROTOCOL_VERSION,
       type: "DELIVERY",
@@ -19375,7 +19382,9 @@ function handleRouted(ws, frame) {
 function handleConnection(ws, req) {
   const remoteIp = req.socket?.remoteAddress ?? "unknown";
   const url2 = new URL(req.url ?? "/", "http://localhost");
-  const token = url2.searchParams.get("token");
+  const authHeader = req.headers["authorization"];
+  const headerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : null;
+  const token = headerToken ?? url2.searchParams.get("token");
   if (token) {
     const result = verifySessionToken(token);
     if (result.valid) {
@@ -19598,9 +19607,9 @@ Copy .env.example \u2192 .env and fill in the values.`
   });
   return httpServer;
 }
-var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, BUCKET_IDLE_TTL_MS, challengeCleanupTimer, rateBuckets, _secret, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, startedAt, TRUST_PROXY;
-var init_chunk_ZAAZVQWC = __esm({
-  "packages/server/dist/chunk-ZAAZVQWC.js"() {
+var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, BUCKET_IDLE_TTL_MS, challengeCleanupTimer, rateBuckets, _secret, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, BACKPRESSURE_BYTES, startedAt, TRUST_PROXY;
+var init_chunk_472A32ED = __esm({
+  "packages/server/dist/chunk-472A32ED.js"() {
     "use strict";
     init_wrapper();
     init_dist();
@@ -19763,6 +19772,7 @@ var init_chunk_ZAAZVQWC = __esm({
     pingIntervals = /* @__PURE__ */ new Set();
     pruneTimer = null;
     _wss = null;
+    BACKPRESSURE_BYTES = 1024 * 1024;
     startedAt = Date.now();
     TRUST_PROXY = process.env["TRUST_PROXY"] === "true";
   }
@@ -19776,7 +19786,7 @@ __export(server_exports, {
 var init_server = __esm({
   "packages/server/dist/server.js"() {
     "use strict";
-    init_chunk_ZAAZVQWC();
+    init_chunk_472A32ED();
   }
 });
 
@@ -20196,7 +20206,10 @@ var AgentroomClient = class {
     await this._doConnect();
     this.reconnectAttempt = 0;
     if (!this.pruneTimer) {
-      this.pruneTimer = setInterval(() => this._pruneAllSkippedKeys(), PRUNE_INTERVAL_MS);
+      this.pruneTimer = setInterval(
+        () => this._pruneAllSkippedKeys(),
+        PRUNE_INTERVAL_MS
+      );
       this.pruneTimer.unref?.();
     }
   }
@@ -20204,8 +20217,9 @@ var AgentroomClient = class {
   async _doConnect() {
     if (!this.identity) throw new Error("identity not loaded");
     if (this.sessionToken) {
-      const tokenUrl = `${this.serverUrl}?token=${encodeURIComponent(this.sessionToken)}`;
-      const connected = await this._openWs(tokenUrl, false);
+      const connected = await this._openWs(this.serverUrl, false, void 0, {
+        authorization: `Bearer ${this.sessionToken}`
+      });
       if (connected) return;
       this.sessionToken = null;
     }
@@ -20213,7 +20227,9 @@ var AgentroomClient = class {
     this.connectAbort = new AbortController();
     let resp;
     try {
-      resp = await fetch(`${httpBase}/auth/challenge`, { signal: this.connectAbort.signal });
+      resp = await fetch(`${httpBase}/auth/challenge`, {
+        signal: this.connectAbort.signal
+      });
     } finally {
       this.connectAbort = null;
     }
@@ -20224,9 +20240,9 @@ var AgentroomClient = class {
     const { challenge } = await resp.json();
     await this._openWs(this.serverUrl, true, challenge);
   }
-  _openWs(wsUrl, withHello, challenge) {
+  _openWs(wsUrl, withHello, challenge, headers) {
     return new Promise((resolve, reject) => {
-      const ws = new wrapper_default(wsUrl);
+      const ws = new wrapper_default(wsUrl, headers ? { headers } : void 0);
       this.ws = ws;
       let settled = false;
       let established = false;
@@ -20290,7 +20306,11 @@ var AgentroomClient = class {
         this.ws = null;
         const reasonStr = reason?.toString() || `code ${code}`;
         if (!settled) {
-          settle(() => withHello ? reject(new Error(`connection closed during handshake: ${reasonStr}`)) : resolve(false));
+          settle(
+            () => withHello ? reject(
+              new Error(`connection closed during handshake: ${reasonStr}`)
+            ) : resolve(false)
+          );
           return;
         }
         if (!established) return;
@@ -20313,7 +20333,10 @@ var AgentroomClient = class {
     try {
       await this._handleFrame(result.data);
     } catch (err) {
-      console.warn("[sdk] error handling frame:", err instanceof Error ? err.message : err);
+      console.warn(
+        "[sdk] error handling frame:",
+        err instanceof Error ? err.message : err
+      );
     }
   }
   async _scheduleReconnect() {
@@ -20323,7 +20346,9 @@ var AgentroomClient = class {
       for (const h of this.onReconnectFailedHandlers) h(reason);
       return;
     }
-    const backoffSteps = DEFAULT_BACKOFF.map((ms) => Math.min(ms, this.reconnectMaxBackoffMs));
+    const backoffSteps = DEFAULT_BACKOFF.map(
+      (ms) => Math.min(ms, this.reconnectMaxBackoffMs)
+    );
     const delay = backoffSteps[Math.min(this.reconnectAttempt, backoffSteps.length - 1)] ?? this.reconnectMaxBackoffMs;
     this.reconnectAttempt++;
     await new Promise((resolve) => {
@@ -20336,7 +20361,8 @@ var AgentroomClient = class {
       this.reconnectAttempt = 0;
       for (const h of this.onReconnectHandlers) h();
     } catch {
-      if (!this.destroyed && this.reconnectEnabled) void this._scheduleReconnect();
+      if (!this.destroyed && this.reconnectEnabled)
+        void this._scheduleReconnect();
     }
   }
   /** Send a frame. Returns false (and warns) if the socket isn't open, so the
@@ -20369,7 +20395,12 @@ var AgentroomClient = class {
   }
   async _handleDelivery(routed) {
     const sigPayload = new TextEncoder().encode(
-      JSON.stringify({ from: routed.from, to: routed.to, seq: routed.seq, nonce: routed.nonce })
+      JSON.stringify({
+        from: routed.from,
+        to: routed.to,
+        seq: routed.seq,
+        nonce: routed.nonce
+      })
     );
     const valid = await verifyFrameSig(sigPayload, routed.sig, routed.from);
     if (!valid) {
@@ -20403,7 +20434,10 @@ var AgentroomClient = class {
   async _handleSessionInit(routed) {
     if (!this.identity) return;
     if (this.store.has(routed.from)) {
-      console.warn("[sdk] ignoring duplicate SESSION_INIT from", routed.from.slice(0, 8));
+      console.warn(
+        "[sdk] ignoring duplicate SESSION_INIT from",
+        routed.from.slice(0, 8)
+      );
       return;
     }
     const initPayload = JSON.parse(
@@ -20421,10 +20455,20 @@ var AgentroomClient = class {
       initiateRatchet: true
     });
     saveSession(session.peerPk, session, this.home);
-    const ackPlain = new TextEncoder().encode(JSON.stringify({ ack: initPayload.nonce }));
-    const { ciphertext: ackCiphertext, nonce: ackNonceOut } = await seal(ackPlain, bootstrapKeys.sendKey);
+    const ackPlain = new TextEncoder().encode(
+      JSON.stringify({ ack: initPayload.nonce })
+    );
+    const { ciphertext: ackCiphertext, nonce: ackNonceOut } = await seal(
+      ackPlain,
+      bootstrapKeys.sendKey
+    );
     const sigPayload = new TextEncoder().encode(
-      JSON.stringify({ from: this.pk, to: routed.from, seq: 0, nonce: toBase64(ackNonceOut) })
+      JSON.stringify({
+        from: this.pk,
+        to: routed.from,
+        seq: 0,
+        nonce: toBase64(ackNonceOut)
+      })
     );
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
     this._sendRaw({
@@ -20483,11 +20527,15 @@ var AgentroomClient = class {
       blob.nonce,
       "invitee"
     );
-    const session = await this.store.init(blob.inviter_ed25519_pk, bootstrapKeys, {
-      identity: this.identity,
-      peerX25519Pk: fromBase64(blob.inviter_x25519_pk),
-      initiateRatchet: false
-    });
+    const session = await this.store.init(
+      blob.inviter_ed25519_pk,
+      bootstrapKeys,
+      {
+        identity: this.identity,
+        peerX25519Pk: fromBase64(blob.inviter_x25519_pk),
+        initiateRatchet: false
+      }
+    );
     saveSession(session.peerPk, session, this.home);
     const initPayload = JSON.stringify({
       x25519_pk: toBase64(this.identity.x25519_pk),
@@ -20495,7 +20543,12 @@ var AgentroomClient = class {
     });
     const ciphertextB64 = toBase64(new TextEncoder().encode(initPayload));
     const sigPayload = new TextEncoder().encode(
-      JSON.stringify({ from: this.pk, to: blob.inviter_ed25519_pk, seq: 0, nonce: ciphertextB64 })
+      JSON.stringify({
+        from: this.pk,
+        to: blob.inviter_ed25519_pk,
+        seq: 0,
+        nonce: ciphertextB64
+      })
     );
     const sig = await signFrame(sigPayload, this.identity.ed25519_sk);
     await this.waitAck((msg_id) => {
@@ -20524,7 +20577,10 @@ or: agentroom invite accept '<url>' --server <url>`
       );
     }
     const plaintext = new TextEncoder().encode(text);
-    const { ciphertext, nonce, ratchet_pk } = await encryptMessage(session, plaintext);
+    const { ciphertext, nonce, ratchet_pk } = await encryptMessage(
+      session,
+      plaintext
+    );
     const seq = session.sendSeq - 1;
     saveSession(session.peerPk, session, this.home);
     const sigPayload = new TextEncoder().encode(

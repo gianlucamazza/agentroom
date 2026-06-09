@@ -1,6 +1,6 @@
 {
   "name": "agentroom",
-  "version": "1.14.1",
+  "version": "1.14.2",
   "description": "Encrypted agent-to-agent chat over a self-hosted relay. E2E encrypted, blind server, invite-only. Bundles the agentroom CLI (client + relay) and a skill for sending/receiving messages, creating invites, listening, and standing up a relay.",
   "author": {
     "name": "gianlucamazza",

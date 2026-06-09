@@ -19667,6 +19667,7 @@ init_wrapper();
 init_dist();
 init_dist();
 init_dist();
+init_zod();
 import { randomUUID as randomUUID2 } from "crypto";
 import {
   readFileSync,
@@ -19686,6 +19687,27 @@ async function deriveSessionKeys(our_dh_sk, their_dh_pk, nonce, role) {
   const keyB = await hkdf(shared, saltBytes, "agentroom-v1-keyB", 32);
   return role === "inviter" ? { sendKey: keyA, recvKey: keyB } : { sendKey: keyB, recvKey: keyA };
 }
+var b642 = external_exports.string().min(1);
+var SerializedRatchetSchema = external_exports.object({
+  peerPk: external_exports.string().min(1),
+  sendChainKey: b642,
+  recvChainKey: b642,
+  sendEphemeral: external_exports.object({
+    ed25519_pk: b642,
+    ed25519_sk: b642,
+    x25519_pk: b642,
+    x25519_sk: b642
+  }),
+  recvEphemeralPk: b642,
+  sendSeq: external_exports.number().int(),
+  recvSeq: external_exports.number().int(),
+  needsSendDhStep: external_exports.boolean(),
+  skippedMessageKeys: external_exports.array(
+    external_exports.tuple([external_exports.string(), external_exports.object({ key: b642, addedAt: external_exports.number().int() })])
+  ),
+  // Optional: sessions serialized before lastUsedAt existed fall back to now.
+  lastUsedAt: external_exports.number().int().optional()
+});
 function serializeSession(state) {
   const serialized = {
     peerPk: state.peerPk,
@@ -19709,9 +19731,24 @@ function serializeSession(state) {
   return JSON.stringify(serialized, null, 2);
 }
 function deserializeSession(json3) {
-  const s = JSON.parse(json3);
+  let raw;
+  try {
+    raw = JSON.parse(json3);
+  } catch (e) {
+    throw new Error(
+      `corrupt session state: invalid JSON (${e instanceof Error ? e.message : String(e)})`
+    );
+  }
+  const parsed = SerializedRatchetSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`corrupt session state: ${parsed.error.message}`);
+  }
+  const s = parsed.data;
   const skippedMap = new Map(
-    s.skippedMessageKeys.map(([k, v]) => [k, { key: fromBase64(v.key), addedAt: v.addedAt }])
+    s.skippedMessageKeys.map(([k, v]) => [
+      k,
+      { key: fromBase64(v.key), addedAt: v.addedAt }
+    ])
   );
   return {
     peerPk: s.peerPk,
@@ -19777,7 +19814,10 @@ var SessionStore = class {
 async function encryptMessage(session, plaintext) {
   if (session.needsSendDhStep && session.recvEphemeralPk !== null) {
     const newEph = await generateKeypair();
-    const dhOut = await dhSharedSecret(newEph.x25519_sk, session.recvEphemeralPk);
+    const dhOut = await dhSharedSecret(
+      newEph.x25519_sk,
+      session.recvEphemeralPk
+    );
     const { chainKey } = await ratchetStep(session.sendChainKey, dhOut);
     session.sendChainKey = chainKey;
     session.sendEphemeral = newEph;
@@ -19786,7 +19826,10 @@ async function encryptMessage(session, plaintext) {
   }
   const msgKey = await messageKey(session.sendChainKey, session.sendSeq);
   const { ciphertext, nonce } = await seal(plaintext, msgKey);
-  const { chainKey: nextChainKey } = await ratchetStep(session.sendChainKey, msgKey);
+  const { chainKey: nextChainKey } = await ratchetStep(
+    session.sendChainKey,
+    msgKey
+  );
   session.sendChainKey = nextChainKey;
   session.sendSeq++;
   session.lastUsedAt = Date.now();
@@ -19817,8 +19860,14 @@ async function decryptMessage(session, ciphertext, nonce, seq, ratchet_pk_b64) {
       const prevPkB64 = toBase64(session.recvEphemeralPk);
       if (ratchet_pk_b64 !== prevPkB64) {
         const newPeerPk = fromBase64(ratchet_pk_b64);
-        const dhOut = await dhSharedSecret(session.sendEphemeral.x25519_sk, newPeerPk);
-        const { chainKey: newRecvChain } = await ratchetStep(session.recvChainKey, dhOut);
+        const dhOut = await dhSharedSecret(
+          session.sendEphemeral.x25519_sk,
+          newPeerPk
+        );
+        const { chainKey: newRecvChain } = await ratchetStep(
+          session.recvChainKey,
+          dhOut
+        );
         session.recvChainKey = newRecvChain;
         session.recvEphemeralPk = newPeerPk;
         session.recvSeq = -1;
@@ -19826,15 +19875,24 @@ async function decryptMessage(session, ciphertext, nonce, seq, ratchet_pk_b64) {
       }
     }
     if (seq <= session.recvSeq) {
-      throw new Error(`replay detected: seq ${seq} <= last seen ${session.recvSeq}`);
+      throw new Error(
+        `replay detected: seq ${seq} <= last seen ${session.recvSeq}`
+      );
     }
     const peerPkForSkip = ratchet_pk_b64 ?? toBase64(session.recvEphemeralPk);
     if (seq > session.recvSeq + 1) {
       await storeSkippedKeys(session, peerPkForSkip, seq);
     }
     const msgKey = await messageKey(session.recvChainKey, seq);
-    const plaintext = await open(fromBase64(ciphertext), fromBase64(nonce), msgKey);
-    const { chainKey: nextChainKey } = await ratchetStep(session.recvChainKey, msgKey);
+    const plaintext = await open(
+      fromBase64(ciphertext),
+      fromBase64(nonce),
+      msgKey
+    );
+    const { chainKey: nextChainKey } = await ratchetStep(
+      session.recvChainKey,
+      msgKey
+    );
     session.recvChainKey = nextChainKey;
     session.recvSeq = seq;
     session.lastUsedAt = Date.now();
@@ -19855,7 +19913,9 @@ async function storeSkippedKeys(session, peerPkB64, upToSeq) {
   if (upToSeq <= startSeq) return;
   const count = Math.min(upToSeq - startSeq, MAX_SKIP);
   if (count === MAX_SKIP && upToSeq - startSeq > MAX_SKIP) {
-    console.warn(`[agentroom] skipping ${upToSeq - startSeq - MAX_SKIP} out-of-order messages (exceed MAX_SKIP=${MAX_SKIP})`);
+    console.warn(
+      `[agentroom] skipping ${upToSeq - startSeq - MAX_SKIP} out-of-order messages (exceed MAX_SKIP=${MAX_SKIP})`
+    );
   }
   const now = Date.now();
   for (const [k, v] of session.skippedMessageKeys) {
@@ -19878,7 +19938,9 @@ function pruneSkippedInPlace(state, ttlMs = SKIP_KEY_TTL_MS, maxSize = MAX_SKIP)
     if (now - v.addedAt > ttlMs) state.skippedMessageKeys.delete(k);
   }
   if (state.skippedMessageKeys.size > maxSize) {
-    const sorted = [...state.skippedMessageKeys.entries()].sort((a, b) => a[1].addedAt - b[1].addedAt);
+    const sorted = [...state.skippedMessageKeys.entries()].sort(
+      (a, b) => a[1].addedAt - b[1].addedAt
+    );
     const toRemove = sorted.slice(0, state.skippedMessageKeys.size - maxSize);
     for (const [k] of toRemove) state.skippedMessageKeys.delete(k);
   }

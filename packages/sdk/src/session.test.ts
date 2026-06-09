@@ -1,5 +1,13 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { generateKeypair, createInvite, toBase64, fromBase64, sodiumReady, messageKey, open } from "@agentroom/protocol";
+import {
+  generateKeypair,
+  createInvite,
+  toBase64,
+  fromBase64,
+  sodiumReady,
+  messageKey,
+  open,
+} from "@agentroom/protocol";
 import {
   SessionStore,
   deriveSessionKeys,
@@ -7,6 +15,7 @@ import {
   decryptMessage,
   serializeSession,
   deserializeSession,
+  MAX_SKIP,
   type RatchetState,
 } from "./session.js";
 
@@ -19,20 +28,53 @@ beforeAll(async () => {
 // static x25519 pub — the mutually-known keys that bootstrap the alternating DH ratchet.
 async function makeSessionPair() {
   const alice = await generateKeypair(); // inviter
-  const bob = await generateKeypair();   // invitee
-  const { signed } = await createInvite(alice.ed25519_pk, alice.ed25519_sk, alice.x25519_pk, "wss://test");
+  const bob = await generateKeypair(); // invitee
+  const { signed } = await createInvite(
+    alice.ed25519_pk,
+    alice.ed25519_sk,
+    alice.x25519_pk,
+    "wss://test",
+  );
   const nonce = signed.blob.nonce;
-  const aliceKeys = await deriveSessionKeys(alice.x25519_sk, bob.x25519_pk, nonce, "inviter");
-  const bobKeys   = await deriveSessionKeys(bob.x25519_sk, alice.x25519_pk, nonce, "invitee");
+  const aliceKeys = await deriveSessionKeys(
+    alice.x25519_sk,
+    bob.x25519_pk,
+    nonce,
+    "inviter",
+  );
+  const bobKeys = await deriveSessionKeys(
+    bob.x25519_sk,
+    alice.x25519_pk,
+    nonce,
+    "invitee",
+  );
   const store = new SessionStore();
-  const aliceS = await store.init("bob", aliceKeys, { identity: alice, peerX25519Pk: bob.x25519_pk, initiateRatchet: true });
-  const bobS   = await store.init("alice", bobKeys, { identity: bob, peerX25519Pk: alice.x25519_pk, initiateRatchet: false });
+  const aliceS = await store.init("bob", aliceKeys, {
+    identity: alice,
+    peerX25519Pk: bob.x25519_pk,
+    initiateRatchet: true,
+  });
+  const bobS = await store.init("alice", bobKeys, {
+    identity: bob,
+    peerX25519Pk: alice.x25519_pk,
+    initiateRatchet: false,
+  });
   return { alice, bob, aliceS, bobS };
 }
 
-async function sendRecv(senderS: RatchetState, receiverS: RatchetState, text: string): Promise<string> {
+async function sendRecv(
+  senderS: RatchetState,
+  receiverS: RatchetState,
+  text: string,
+): Promise<string> {
   const enc = await encryptMessage(senderS, new TextEncoder().encode(text));
-  const plain = await decryptMessage(receiverS, enc.ciphertext, enc.nonce, senderS.sendSeq - 1, enc.ratchet_pk);
+  const plain = await decryptMessage(
+    receiverS,
+    enc.ciphertext,
+    enc.nonce,
+    senderS.sendSeq - 1,
+    enc.ratchet_pk,
+  );
   return new TextDecoder().decode(plain);
 }
 
@@ -66,7 +108,13 @@ describe("Double Ratchet session", () => {
     // Encrypt + decrypt msg0 (bob's recv chain advances)
     const enc0 = await encryptMessage(aliceS, new TextEncoder().encode("msg0"));
     const seq0 = aliceS.sendSeq - 1;
-    await decryptMessage(bobS, enc0.ciphertext, enc0.nonce, seq0, enc0.ratchet_pk);
+    await decryptMessage(
+      bobS,
+      enc0.ciphertext,
+      enc0.nonce,
+      seq0,
+      enc0.ratchet_pk,
+    );
 
     // Capture bob's chain key AFTER msg0 was decrypted (the "compromised" key)
     const compromisedChainKey = bobS.recvChainKey.slice();
@@ -74,10 +122,19 @@ describe("Double Ratchet session", () => {
     // Encrypt + decrypt msg1 (same send chain — no rotation without an inbound message)
     const enc1 = await encryptMessage(aliceS, new TextEncoder().encode("msg1"));
     const seq1 = aliceS.sendSeq - 1;
-    await decryptMessage(bobS, enc1.ciphertext, enc1.nonce, seq1, enc1.ratchet_pk);
+    await decryptMessage(
+      bobS,
+      enc1.ciphertext,
+      enc1.nonce,
+      seq1,
+      enc1.ratchet_pk,
+    );
 
     // The advanced (compromised) chain key cannot reconstruct the key used for msg0
-    const wrongKey = await messageKey(new Uint8Array(compromisedChainKey), seq0);
+    const wrongKey = await messageKey(
+      new Uint8Array(compromisedChainKey),
+      seq0,
+    );
     await expect(
       open(fromBase64(enc0.ciphertext), fromBase64(enc0.nonce), wrongKey),
     ).rejects.toThrow();
@@ -87,17 +144,35 @@ describe("Double Ratchet session", () => {
     const { aliceS, bobS } = await makeSessionPair();
 
     // Encrypt two messages but deliver out of order
-    const enc0 = await encryptMessage(aliceS, new TextEncoder().encode("first"));
+    const enc0 = await encryptMessage(
+      aliceS,
+      new TextEncoder().encode("first"),
+    );
     const seq0 = aliceS.sendSeq - 1;
-    const enc1 = await encryptMessage(aliceS, new TextEncoder().encode("second"));
+    const enc1 = await encryptMessage(
+      aliceS,
+      new TextEncoder().encode("second"),
+    );
     const seq1 = aliceS.sendSeq - 1;
 
     // Deliver msg1 first (skips msg0 → stores skipped key for seq0)
-    const text1 = await decryptMessage(bobS, enc1.ciphertext, enc1.nonce, seq1, enc1.ratchet_pk);
+    const text1 = await decryptMessage(
+      bobS,
+      enc1.ciphertext,
+      enc1.nonce,
+      seq1,
+      enc1.ratchet_pk,
+    );
     expect(new TextDecoder().decode(text1)).toBe("second");
 
     // Now deliver msg0 (should be found in skipped keys)
-    const text0 = await decryptMessage(bobS, enc0.ciphertext, enc0.nonce, seq0, enc0.ratchet_pk);
+    const text0 = await decryptMessage(
+      bobS,
+      enc0.ciphertext,
+      enc0.nonce,
+      seq0,
+      enc0.ratchet_pk,
+    );
     expect(new TextDecoder().decode(text0)).toBe("first");
   });
 });
@@ -105,18 +180,24 @@ describe("Double Ratchet session", () => {
 describe("Double Ratchet PCS (DH ratchet)", () => {
   it("seeds sendEphemeral from identity and rotates it off on the first send", async () => {
     const { alice, aliceS, bobS } = await makeSessionPair();
-    expect(toBase64(aliceS.sendEphemeral.x25519_pk)).toBe(toBase64(alice.x25519_pk)); // seeded = identity
-    expect(aliceS.needsSendDhStep).toBe(true);   // inviter initiates
-    expect(bobS.needsSendDhStep).toBe(false);    // invitee waits
+    expect(toBase64(aliceS.sendEphemeral.x25519_pk)).toBe(
+      toBase64(alice.x25519_pk),
+    ); // seeded = identity
+    expect(aliceS.needsSendDhStep).toBe(true); // inviter initiates
+    expect(bobS.needsSendDhStep).toBe(false); // invitee waits
 
     expect(await sendRecv(aliceS, bobS, "hi")).toBe("hi");
 
     // first send performed a DH step → ephemeral rotated off the long-term identity key
-    expect(toBase64(aliceS.sendEphemeral.x25519_pk)).not.toBe(toBase64(alice.x25519_pk));
+    expect(toBase64(aliceS.sendEphemeral.x25519_pk)).not.toBe(
+      toBase64(alice.x25519_pk),
+    );
     expect(aliceS.needsSendDhStep).toBe(false);
     // bob ran the matching recv step; it now owes a send rotation and tracks alice's eph
     expect(bobS.needsSendDhStep).toBe(true);
-    expect(toBase64(bobS.recvEphemeralPk)).toBe(toBase64(aliceS.sendEphemeral.x25519_pk));
+    expect(toBase64(bobS.recvEphemeralPk)).toBe(
+      toBase64(aliceS.sendEphemeral.x25519_pk),
+    );
   });
 
   it("ratchet_pk rotates every turn-around (post-compromise security)", async () => {
@@ -124,15 +205,30 @@ describe("Double Ratchet PCS (DH ratchet)", () => {
     const seen = new Set<string>();
     let lastAlice = "";
     for (let i = 0; i < 4; i++) {
-      const ea = await encryptMessage(aliceS, new TextEncoder().encode(`a${i}`));
+      const ea = await encryptMessage(
+        aliceS,
+        new TextEncoder().encode(`a${i}`),
+      );
       seen.add(ea.ratchet_pk);
-      const ta = await decryptMessage(bobS, ea.ciphertext, ea.nonce, aliceS.sendSeq - 1, ea.ratchet_pk);
+      const ta = await decryptMessage(
+        bobS,
+        ea.ciphertext,
+        ea.nonce,
+        aliceS.sendSeq - 1,
+        ea.ratchet_pk,
+      );
       expect(new TextDecoder().decode(ta)).toBe(`a${i}`);
       if (i > 0) expect(ea.ratchet_pk).not.toBe(lastAlice); // a fresh ephemeral each turn
       lastAlice = ea.ratchet_pk;
 
       const eb = await encryptMessage(bobS, new TextEncoder().encode(`b${i}`));
-      const tb = await decryptMessage(aliceS, eb.ciphertext, eb.nonce, bobS.sendSeq - 1, eb.ratchet_pk);
+      const tb = await decryptMessage(
+        aliceS,
+        eb.ciphertext,
+        eb.nonce,
+        bobS.sendSeq - 1,
+        eb.ratchet_pk,
+      );
       expect(new TextDecoder().decode(tb)).toBe(`b${i}`);
     }
     expect(seen.size).toBe(4); // four distinct sending ephemerals over four turns
@@ -140,38 +236,53 @@ describe("Double Ratchet PCS (DH ratchet)", () => {
 
   it("a send chain captured before a rotation cannot derive post-rotation keys", async () => {
     const { aliceS, bobS } = await makeSessionPair();
-    await sendRecv(aliceS, bobS, "a0");                 // alice rotates (first send)
-    await sendRecv(bobS, aliceS, "b0");                 // alice receives → owes a rotation
+    await sendRecv(aliceS, bobS, "a0"); // alice rotates (first send)
+    await sendRecv(bobS, aliceS, "b0"); // alice receives → owes a rotation
     const staleSendChain = aliceS.sendChainKey.slice();
 
     const e1 = await encryptMessage(aliceS, new TextEncoder().encode("a1")); // rotation
-    expect(toBase64(new Uint8Array(staleSendChain))).not.toBe(toBase64(aliceS.sendChainKey));
+    expect(toBase64(new Uint8Array(staleSendChain))).not.toBe(
+      toBase64(aliceS.sendChainKey),
+    );
 
     // the stale chain's key for the same seq cannot open the post-rotation ciphertext
-    const wrongKey = await messageKey(new Uint8Array(staleSendChain), aliceS.sendSeq - 1);
+    const wrongKey = await messageKey(
+      new Uint8Array(staleSendChain),
+      aliceS.sendSeq - 1,
+    );
     await expect(
       open(fromBase64(e1.ciphertext), fromBase64(e1.nonce), wrongKey),
     ).rejects.toThrow();
 
     // sanity: the real recipient still decrypts it
-    const t = await decryptMessage(bobS, e1.ciphertext, e1.nonce, aliceS.sendSeq - 1, e1.ratchet_pk);
+    const t = await decryptMessage(
+      bobS,
+      e1.ciphertext,
+      e1.nonce,
+      aliceS.sendSeq - 1,
+      e1.ratchet_pk,
+    );
     expect(new TextDecoder().decode(t)).toBe("a1");
   });
 
   it("out-of-order delivery within a post-rotation chain", async () => {
     const { aliceS, bobS } = await makeSessionPair();
-    const e0 = await encryptMessage(aliceS, new TextEncoder().encode("first"));  // rotation, seq0
+    const e0 = await encryptMessage(aliceS, new TextEncoder().encode("first")); // rotation, seq0
     const s0 = aliceS.sendSeq - 1;
     const e1 = await encryptMessage(aliceS, new TextEncoder().encode("second")); // same eph, seq1
     const s1 = aliceS.sendSeq - 1;
 
     // deliver the second message first → key for the first is buffered as skipped
-    expect(new TextDecoder().decode(
-      await decryptMessage(bobS, e1.ciphertext, e1.nonce, s1, e1.ratchet_pk),
-    )).toBe("second");
-    expect(new TextDecoder().decode(
-      await decryptMessage(bobS, e0.ciphertext, e0.nonce, s0, e0.ratchet_pk),
-    )).toBe("first");
+    expect(
+      new TextDecoder().decode(
+        await decryptMessage(bobS, e1.ciphertext, e1.nonce, s1, e1.ratchet_pk),
+      ),
+    ).toBe("second");
+    expect(
+      new TextDecoder().decode(
+        await decryptMessage(bobS, e0.ciphertext, e0.nonce, s0, e0.ratchet_pk),
+      ),
+    ).toBe("first");
   });
 });
 
@@ -184,9 +295,15 @@ describe("Session serialization", () => {
 
     expect(toBase64(restored.sendChainKey)).toBe(toBase64(aliceS.sendChainKey));
     expect(toBase64(restored.recvChainKey)).toBe(toBase64(aliceS.recvChainKey));
-    expect(toBase64(restored.sendEphemeral.x25519_pk)).toBe(toBase64(aliceS.sendEphemeral.x25519_pk));
-    expect(toBase64(restored.sendEphemeral.x25519_sk)).toBe(toBase64(aliceS.sendEphemeral.x25519_sk));
-    expect(toBase64(restored.recvEphemeralPk)).toBe(toBase64(aliceS.recvEphemeralPk));
+    expect(toBase64(restored.sendEphemeral.x25519_pk)).toBe(
+      toBase64(aliceS.sendEphemeral.x25519_pk),
+    );
+    expect(toBase64(restored.sendEphemeral.x25519_sk)).toBe(
+      toBase64(aliceS.sendEphemeral.x25519_sk),
+    );
+    expect(toBase64(restored.recvEphemeralPk)).toBe(
+      toBase64(aliceS.recvEphemeralPk),
+    );
     expect(restored.needsSendDhStep).toBe(aliceS.needsSendDhStep);
     expect(restored.sendSeq).toBe(aliceS.sendSeq);
     expect(restored.recvSeq).toBe(aliceS.recvSeq);
@@ -198,12 +315,24 @@ describe("Session serialization", () => {
     const { aliceS, bobS } = await makeSessionPair();
 
     // Produce a skip: deliver msg1 first, which stores key for msg0
-    const enc0 = await encryptMessage(aliceS, new TextEncoder().encode("skip-me"));
-    const enc1 = await encryptMessage(aliceS, new TextEncoder().encode("deliver-first"));
+    const enc0 = await encryptMessage(
+      aliceS,
+      new TextEncoder().encode("skip-me"),
+    );
+    const enc1 = await encryptMessage(
+      aliceS,
+      new TextEncoder().encode("deliver-first"),
+    );
     const seq0 = aliceS.sendSeq - 2;
     const seq1 = aliceS.sendSeq - 1;
 
-    await decryptMessage(bobS, enc1.ciphertext, enc1.nonce, seq1, enc1.ratchet_pk);
+    await decryptMessage(
+      bobS,
+      enc1.ciphertext,
+      enc1.nonce,
+      seq1,
+      enc1.ratchet_pk,
+    );
     expect(bobS.skippedMessageKeys.size).toBeGreaterThan(0);
 
     const json = serializeSession(bobS);
@@ -212,7 +341,13 @@ describe("Session serialization", () => {
     expect(restored.skippedMessageKeys.size).toBe(bobS.skippedMessageKeys.size);
 
     // Restored session can still decrypt the skipped message
-    const text0 = await decryptMessage(restored, enc0.ciphertext, enc0.nonce, seq0, enc0.ratchet_pk);
+    const text0 = await decryptMessage(
+      restored,
+      enc0.ciphertext,
+      enc0.nonce,
+      seq0,
+      enc0.ratchet_pk,
+    );
     expect(new TextDecoder().decode(text0)).toBe("skip-me");
   });
 
@@ -227,9 +362,18 @@ describe("Session serialization", () => {
     restored.peerPk = aliceS.peerPk;
 
     // Send another message from the restored state
-    const enc = await encryptMessage(restored, new TextEncoder().encode("msg1"));
+    const enc = await encryptMessage(
+      restored,
+      new TextEncoder().encode("msg1"),
+    );
     const seq = restored.sendSeq - 1;
-    const plain = await decryptMessage(bobS, enc.ciphertext, enc.nonce, seq, enc.ratchet_pk);
+    const plain = await decryptMessage(
+      bobS,
+      enc.ciphertext,
+      enc.nonce,
+      seq,
+      enc.ratchet_pk,
+    );
     expect(new TextDecoder().decode(plain)).toBe("msg1");
   });
 
@@ -243,7 +387,13 @@ describe("Session serialization", () => {
 
     // restored bob sends (rotates) and alice decrypts
     const e = await encryptMessage(restored, new TextEncoder().encode("b0"));
-    const t = await decryptMessage(aliceS, e.ciphertext, e.nonce, restored.sendSeq - 1, e.ratchet_pk);
+    const t = await decryptMessage(
+      aliceS,
+      e.ciphertext,
+      e.nonce,
+      restored.sendSeq - 1,
+      e.ratchet_pk,
+    );
     expect(new TextDecoder().decode(t)).toBe("b0");
   });
 });
@@ -253,7 +403,10 @@ describe("C3: atomic state — session survives decrypt failure", () => {
     const { aliceS, bobS } = await makeSessionPair();
 
     // Encrypt a legitimate message
-    const enc = await encryptMessage(aliceS, new TextEncoder().encode("real msg"));
+    const enc = await encryptMessage(
+      aliceS,
+      new TextEncoder().encode("real msg"),
+    );
     const seq = aliceS.sendSeq - 1;
 
     // Corrupt the ciphertext (flip one byte)
@@ -268,7 +421,13 @@ describe("C3: atomic state — session survives decrypt failure", () => {
     ).rejects.toThrow();
 
     // session state is rolled back — bob must still decrypt the original correctly
-    const plain = await decryptMessage(bobS, enc.ciphertext, enc.nonce, seq, enc.ratchet_pk);
+    const plain = await decryptMessage(
+      bobS,
+      enc.ciphertext,
+      enc.nonce,
+      seq,
+      enc.ratchet_pk,
+    );
     expect(new TextDecoder().decode(plain)).toBe("real msg");
   });
 
@@ -279,7 +438,13 @@ describe("C3: atomic state — session survives decrypt failure", () => {
     const seq0 = aliceS.sendSeq - 1;
 
     // Decrypt once (normal)
-    await decryptMessage(bobS, enc0.ciphertext, enc0.nonce, seq0, enc0.ratchet_pk);
+    await decryptMessage(
+      bobS,
+      enc0.ciphertext,
+      enc0.nonce,
+      seq0,
+      enc0.ratchet_pk,
+    );
 
     // Replay same message — must throw "replay detected"
     await expect(
@@ -289,7 +454,13 @@ describe("C3: atomic state — session survives decrypt failure", () => {
     // Chain must still work for next message
     const enc1 = await encryptMessage(aliceS, new TextEncoder().encode("msg1"));
     const seq1 = aliceS.sendSeq - 1;
-    const plain = await decryptMessage(bobS, enc1.ciphertext, enc1.nonce, seq1, enc1.ratchet_pk);
+    const plain = await decryptMessage(
+      bobS,
+      enc1.ciphertext,
+      enc1.nonce,
+      seq1,
+      enc1.ratchet_pk,
+    );
     expect(new TextDecoder().decode(plain)).toBe("msg1");
   });
 });
@@ -314,12 +485,84 @@ describe("C4: SessionStore per-instance isolation", () => {
 
     const a = await generateKeypair();
     const b = await generateKeypair();
-    const { signed } = await createInvite(a.ed25519_pk, a.ed25519_sk, a.x25519_pk, "wss://test");
-    const keys = await deriveSessionKeys(a.x25519_sk, b.x25519_pk, signed.blob.nonce, "inviter");
+    const { signed } = await createInvite(
+      a.ed25519_pk,
+      a.ed25519_sk,
+      a.x25519_pk,
+      "wss://test",
+    );
+    const keys = await deriveSessionKeys(
+      a.x25519_sk,
+      b.x25519_pk,
+      signed.blob.nonce,
+      "inviter",
+    );
 
-    await store1.init("remote-pk", keys, { identity: a, peerX25519Pk: b.x25519_pk, initiateRatchet: true });
+    await store1.init("remote-pk", keys, {
+      identity: a,
+      peerX25519Pk: b.x25519_pk,
+      initiateRatchet: true,
+    });
 
     expect(store1.get("remote-pk")).toBeDefined();
     expect(store2.get("remote-pk")).toBeUndefined();
+  });
+});
+
+describe("DoS guard: out-of-order key derivation is bounded", () => {
+  it("caps skipped-key derivation against a malicious large seq", async () => {
+    const { bobS } = await makeSessionPair();
+
+    // A peer claims a huge seq. Without the MAX_SKIP cap, storeSkippedKeys would
+    // derive ~seq message keys (CPU/memory DoS). The forged ciphertext fails to
+    // open (fail-closed), but the work done before that must stay bounded.
+    const garbage = toBase64(new Uint8Array(48));
+    const nonce = toBase64(new Uint8Array(24));
+    await expect(
+      decryptMessage(bobS, garbage, nonce, 1_000_000, undefined),
+    ).rejects.toThrow();
+
+    // Exactly MAX_SKIP keys buffered — proof the loop ran 100×, not 1_000_000×.
+    expect(bobS.skippedMessageKeys.size).toBe(MAX_SKIP);
+  });
+});
+
+describe("deserializeSession validation (fail-fast, no silent corruption)", () => {
+  it("loads a valid serialized session unchanged", async () => {
+    const { aliceS } = await makeSessionPair();
+    const restored = deserializeSession(serializeSession(aliceS));
+    expect(restored.sendSeq).toBe(aliceS.sendSeq);
+    expect(restored.recvSeq).toBe(aliceS.recvSeq);
+  });
+
+  it("throws on malformed JSON", () => {
+    expect(() => deserializeSession("{ not json")).toThrow(/corrupt session/i);
+  });
+
+  it("throws on a missing required scalar instead of loading undefined", async () => {
+    const { aliceS } = await makeSessionPair();
+    const obj = JSON.parse(serializeSession(aliceS));
+    delete obj.sendSeq; // previously deserialized to `undefined` → corrupt ratchet
+    expect(() => deserializeSession(JSON.stringify(obj))).toThrow(
+      /corrupt session/i,
+    );
+  });
+
+  it("throws on a wrong-typed field", async () => {
+    const { aliceS } = await makeSessionPair();
+    const obj = JSON.parse(serializeSession(aliceS));
+    obj.needsSendDhStep = "yes"; // not a boolean
+    expect(() => deserializeSession(JSON.stringify(obj))).toThrow(
+      /corrupt session/i,
+    );
+  });
+
+  it("throws on a missing required object field", async () => {
+    const { aliceS } = await makeSessionPair();
+    const obj = JSON.parse(serializeSession(aliceS));
+    delete obj.sendEphemeral;
+    expect(() => deserializeSession(JSON.stringify(obj))).toThrow(
+      /corrupt session/i,
+    );
   });
 });

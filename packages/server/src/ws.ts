@@ -13,7 +13,13 @@ import {
   type RoutedFrame,
 } from "@agentroom/protocol";
 import { store } from "./store.js";
-import { consumeChallenge, issueSessionToken, verifySessionToken, consumeHelloFailRate } from "./auth.js";
+import {
+  consumeChallenge,
+  issueSessionToken,
+  verifySessionToken,
+  consumeHelloFailRate,
+  consumeFrameRate,
+} from "./auth.js";
 import { inc, set } from "./metrics.js";
 import { logEvent } from "./log.js";
 
@@ -42,7 +48,10 @@ let pruneTimer: ReturnType<typeof setInterval> | null = null;
 export function clearWssIntervals() {
   for (const t of pingIntervals) clearInterval(t);
   pingIntervals.clear();
-  if (pruneTimer) { clearInterval(pruneTimer); pruneTimer = null; }
+  if (pruneTimer) {
+    clearInterval(pruneTimer);
+    pruneTimer = null;
+  }
 }
 
 export function getWss(): WebSocketServer | null {
@@ -59,11 +68,30 @@ function send(ws: WebSocket, data: unknown) {
 }
 
 function errorFrame(code: string, message: string) {
-  return { v: PROTOCOL_VERSION, type: "ERROR", msg_id: randomUUID(), ts: Date.now(), code, message };
+  return {
+    v: PROTOCOL_VERSION,
+    type: "ERROR",
+    msg_id: randomUUID(),
+    ts: Date.now(),
+    code,
+    message,
+  };
 }
 
-function ackFrame(ref_msg_id: string, status: "delivered" | "queued" | "error", error?: string) {
-  return { v: PROTOCOL_VERSION, type: "ACK", msg_id: randomUUID(), ts: Date.now(), ref_msg_id, status, ...(error !== undefined ? { error } : {}) };
+function ackFrame(
+  ref_msg_id: string,
+  status: "delivered" | "queued" | "error",
+  error?: string,
+) {
+  return {
+    v: PROTOCOL_VERSION,
+    type: "ACK",
+    msg_id: randomUUID(),
+    ts: Date.now(),
+    ref_msg_id,
+    status,
+    ...(error !== undefined ? { error } : {}),
+  };
 }
 
 function flushPending(ws: WebSocket, pk: string) {
@@ -73,7 +101,13 @@ function flushPending(ws: WebSocket, pk: string) {
       const routed = JSON.parse(envelope) as RoutedFrame;
       // only delete after confirming ws is still open — never lose messages silently
       if (ws.readyState !== WebSocket.OPEN) break;
-      send(ws, { v: PROTOCOL_VERSION, type: "DELIVERY", msg_id: randomUUID(), ts: Date.now(), routed });
+      send(ws, {
+        v: PROTOCOL_VERSION,
+        type: "DELIVERY",
+        msg_id: randomUUID(),
+        ts: Date.now(),
+        routed,
+      });
       store.deletePending(id);
     } catch {
       store.deletePending(id);
@@ -91,10 +125,17 @@ async function handleHello(ws: WebSocket, frame: HelloFrame, remoteIp: string) {
   }
 
   const msgBytes = new TextEncoder().encode(frame.challenge);
-  const valid = await verify(msgBytes, fromBase64(frame.sig), fromBase64(frame.ed25519_pk));
+  const valid = await verify(
+    msgBytes,
+    fromBase64(frame.sig),
+    fromBase64(frame.ed25519_pk),
+  );
   if (!valid) {
     inc("hello_failures");
-    logEvent("warn", "hello.fail", { ip: remoteIp, pk: frame.ed25519_pk.slice(0, 8) });
+    logEvent("warn", "hello.fail", {
+      ip: remoteIp,
+      pk: frame.ed25519_pk.slice(0, 8),
+    });
     if (!consumeHelloFailRate(remoteIp)) {
       inc("rate_limit_hits");
       send(ws, errorFrame("RATE_LIMIT", "too many authentication failures"));
@@ -109,11 +150,21 @@ async function handleHello(ws: WebSocket, frame: HelloFrame, remoteIp: string) {
   store.upsertAgent(frame.ed25519_pk, frame.x25519_pk);
   const session_token = issueSessionToken(frame.ed25519_pk);
 
-  send(ws, { v: PROTOCOL_VERSION, type: "HELLO_ACK", msg_id: randomUUID(), ts: Date.now(), session_token });
+  send(ws, {
+    v: PROTOCOL_VERSION,
+    type: "HELLO_ACK",
+    msg_id: randomUUID(),
+    ts: Date.now(),
+    session_token,
+  });
 
   // close any previous WS for this pk before registering the new one (prevents ghost connections)
   const existing = agents.get(frame.ed25519_pk);
-  if (existing && existing.ws !== ws && existing.ws.readyState === WebSocket.OPEN) {
+  if (
+    existing &&
+    existing.ws !== ws &&
+    existing.ws.readyState === WebSocket.OPEN
+  ) {
     existing.ws.close(1000, "replaced by new connection");
   }
 
@@ -126,37 +177,84 @@ async function handleHello(ws: WebSocket, frame: HelloFrame, remoteIp: string) {
 
 function handleInvitePublish(ws: WebSocket, frame: InvitePublishFrame) {
   const pk = getPk(ws);
-  if (!pk) { send(ws, errorFrame("UNAUTH", "not authenticated")); return; }
-  store.publishInvite(frame.invite_id, frame.blob, pk, frame.expires_at);
+  if (!pk) {
+    send(ws, errorFrame("UNAUTH", "not authenticated"));
+    return;
+  }
+  const maxInvites = parseInt(process.env["MAX_INVITES_PER_PK"] ?? "20", 10);
+  if (store.countOpenInvitesByPk(pk) >= maxInvites) {
+    send(ws, errorFrame("INVITE_QUOTA", "too many unclaimed invites"));
+    return;
+  }
+  // expires_at is client-controlled (epoch ms): clamp it so one agent cannot
+  // park invites in the DB forever
+  const maxExpiresAt = Date.now() + 7 * 24 * 3_600_000;
+  store.publishInvite(
+    frame.invite_id,
+    frame.blob,
+    pk,
+    Math.min(frame.expires_at, maxExpiresAt),
+  );
   send(ws, ackFrame(frame.msg_id, "delivered"));
 }
 
 async function handleInviteClaim(ws: WebSocket, frame: InviteClaimFrame) {
   const invite = store.getInvite(frame.invite_id);
-  if (!invite) { send(ws, errorFrame("NOT_FOUND", "invite not found")); return; }
-  if (invite.claimed_at) { send(ws, errorFrame("ALREADY_CLAIMED", "invite already used")); return; }
+  if (!invite) {
+    send(ws, errorFrame("NOT_FOUND", "invite not found"));
+    return;
+  }
+  if (invite.claimed_at) {
+    send(ws, errorFrame("ALREADY_CLAIMED", "invite already used"));
+    return;
+  }
+  if (invite.expires_at <= Date.now()) {
+    send(ws, errorFrame("EXPIRED", "invite expired"));
+    return;
+  }
 
   // verify that frame.from actually signed this claim.
   // Without this check, any authenticated user could claim any invite with an arbitrary "from" pk.
   const sigPayload = new TextEncoder().encode(
-    JSON.stringify({ from: frame.from, to: invite.inviter_pk, seq: 0, nonce: frame.nonce }),
+    JSON.stringify({
+      from: frame.from,
+      to: invite.inviter_pk,
+      seq: 0,
+      nonce: frame.nonce,
+    }),
   );
-  const claimSigValid = await verify(sigPayload, fromBase64(frame.sig), fromBase64(frame.from));
+  const claimSigValid = await verify(
+    sigPayload,
+    fromBase64(frame.sig),
+    fromBase64(frame.from),
+  );
   if (!claimSigValid) {
-    logEvent("warn", "invite_claim.invalid_sig", { from: frame.from.slice(0, 8), invite_id: frame.invite_id });
-    send(ws, errorFrame("INVALID_SIG", "INVITE_CLAIM signature verification failed"));
+    logEvent("warn", "invite_claim.invalid_sig", {
+      from: frame.from.slice(0, 8),
+      invite_id: frame.invite_id,
+    });
+    send(
+      ws,
+      errorFrame("INVALID_SIG", "INVITE_CLAIM signature verification failed"),
+    );
     return;
   }
 
   // Apply same cap as handleRouted to prevent queue amplification
   const maxMsgs = parseInt(process.env["MAX_PENDING_MSGS"] ?? "500", 10);
-  if (!agents.has(invite.inviter_pk) && store.countPending(invite.inviter_pk) >= maxMsgs) {
+  if (
+    !agents.has(invite.inviter_pk) &&
+    store.countPending(invite.inviter_pk) >= maxMsgs
+  ) {
     send(ws, ackFrame(frame.msg_id, "error", "recipient queue full"));
     return;
   }
 
   const ok = store.claimInvite(frame.invite_id);
-  if (!ok) { send(ws, errorFrame("ALREADY_CLAIMED", "invite already used")); return; }
+  if (!ok) {
+    send(ws, errorFrame("ALREADY_CLAIMED", "invite already used"));
+    return;
+  }
 
   const initFrame: RoutedFrame = {
     v: PROTOCOL_VERSION,
@@ -173,9 +271,19 @@ async function handleInviteClaim(ws: WebSocket, frame: InviteClaimFrame) {
 
   const inviter = agents.get(invite.inviter_pk);
   if (inviter) {
-    send(inviter.ws, { v: PROTOCOL_VERSION, type: "DELIVERY", msg_id: randomUUID(), ts: Date.now(), routed: initFrame });
+    send(inviter.ws, {
+      v: PROTOCOL_VERSION,
+      type: "DELIVERY",
+      msg_id: randomUUID(),
+      ts: Date.now(),
+      routed: initFrame,
+    });
   } else {
-    store.enqueuePending(randomUUID(), invite.inviter_pk, JSON.stringify(initFrame));
+    store.enqueuePending(
+      randomUUID(),
+      invite.inviter_pk,
+      JSON.stringify(initFrame),
+    );
   }
   send(ws, ackFrame(frame.msg_id, "queued"));
 }
@@ -191,7 +299,13 @@ function handleRouted(ws: WebSocket, frame: RoutedFrame) {
   const recipient = agents.get(frame.to);
 
   if (recipient) {
-    send(recipient.ws, { v: PROTOCOL_VERSION, type: "DELIVERY", msg_id: randomUUID(), ts: Date.now(), routed: frame });
+    send(recipient.ws, {
+      v: PROTOCOL_VERSION,
+      type: "DELIVERY",
+      msg_id: randomUUID(),
+      ts: Date.now(),
+      routed: frame,
+    });
     send(ws, ackFrame(frame.msg_id, "delivered"));
     inc("messages_routed_total");
   } else {
@@ -226,31 +340,60 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
   }, 30_000);
   pingIntervals.add(pingInterval);
 
-  ws.on("pong", () => { /* keepalive acknowledged */ });
+  ws.on("pong", () => {
+    /* keepalive acknowledged */
+  });
   ws.on("ping", () => ws.pong());
 
   ws.on("message", async (raw) => {
     let parsed: unknown;
-    try { parsed = JSON.parse(raw.toString()); }
-    catch { send(ws, errorFrame("BAD_JSON", "invalid JSON")); return; }
+    try {
+      parsed = JSON.parse(raw.toString());
+    } catch {
+      send(ws, errorFrame("BAD_JSON", "invalid JSON"));
+      return;
+    }
 
     const result = parseFrame(parsed);
-    if (!result.ok) { send(ws, errorFrame("BAD_FRAME", result.error)); return; }
+    if (!result.ok) {
+      send(ws, errorFrame("BAD_FRAME", result.error));
+      return;
+    }
 
     const frame = result.data;
-    if (frame.type === "PING") { send(ws, { ...frame, type: "PONG" }); return; }
+
+    // rate-limit every frame from an authenticated socket, app-level PING/PONG
+    // included — keepalives must not be a free flood channel
+    const authedPk = getPk(ws);
+    if (authedPk && !consumeFrameRate(authedPk)) {
+      inc("rate_limit_hits");
+      send(ws, errorFrame("RATE_LIMIT", "too many frames"));
+      return;
+    }
+
+    if (frame.type === "PING") {
+      send(ws, { ...frame, type: "PONG" });
+      return;
+    }
     if (frame.type === "PONG") return;
 
-    if (frame.type === "HELLO") { await handleHello(ws, frame, remoteIp); return; }
+    if (frame.type === "HELLO") {
+      await handleHello(ws, frame, remoteIp);
+      return;
+    }
 
-    if (!getPk(ws)) {
+    if (!authedPk) {
       send(ws, errorFrame("UNAUTH", "authenticate first with HELLO"));
       return;
     }
 
     switch (frame.type) {
-      case "INVITE_PUBLISH": handleInvitePublish(ws, frame); break;
-      case "INVITE_CLAIM":   await handleInviteClaim(ws, frame); break;
+      case "INVITE_PUBLISH":
+        handleInvitePublish(ws, frame);
+        break;
+      case "INVITE_CLAIM":
+        await handleInviteClaim(ws, frame);
+        break;
       case "MSG":
       case "SESSION_INIT":
       case "SESSION_ACK":
@@ -278,12 +421,27 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
 
 /** Attach WS server to an existing HTTP server on path /ws */
 export function attachWss(httpServer: Server): WebSocketServer {
-  const wss = new WebSocketServer({ noServer: true });
+  // ws closes oversized frames with 1009 before they reach JSON.parse —
+  // bounds memory per frame (schema field limits bound the content further)
+  const maxPayload = parseInt(
+    process.env["WS_MAX_PAYLOAD"] ?? String(256 * 1024),
+    10,
+  );
+  const wss = new WebSocketServer({ noServer: true, maxPayload });
   _wss = wss;
 
   httpServer.on("upgrade", (req, socket, head) => {
     const { pathname } = new URL(req.url ?? "/", "http://localhost");
     if (pathname !== "/ws") {
+      socket.destroy();
+      return;
+    }
+    const maxConns = parseInt(process.env["MAX_CONNECTIONS"] ?? "500", 10);
+    if (wss.clients.size >= maxConns) {
+      logEvent("warn", "upgrade.refused", { reason: "max_connections" });
+      socket.write(
+        "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n",
+      );
       socket.destroy();
       return;
     }

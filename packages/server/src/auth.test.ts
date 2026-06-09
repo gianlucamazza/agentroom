@@ -29,7 +29,8 @@ describe("rate limiter: challenge", () => {
     const ts = Date.now();
     const ip1 = `ip1-${ts}`;
     const ip2 = `ip2-${ts}`;
-    let a1 = 0, a2 = 0;
+    let a1 = 0,
+      a2 = 0;
     for (let i = 0; i < 12; i++) {
       if (consumeChallengeRate(ip1)) a1++;
       if (consumeChallengeRate(ip2)) a2++;
@@ -58,9 +59,31 @@ describe("rate limiter: hello fail", () => {
   });
 });
 
+describe("rate limiter: post-auth frames", () => {
+  it("allows a burst up to capacity, then rejects", async () => {
+    const { consumeFrameRate } = await getAuth();
+    const pk = `pk-${Date.now()}-frames`;
+    let allowed = 0;
+    for (let i = 0; i < 150; i++) {
+      if (consumeFrameRate(pk)) allowed++;
+    }
+    expect(allowed).toBe(120); // burst capacity = 120
+    expect(consumeFrameRate(pk)).toBe(false);
+  });
+
+  it("different pks have independent buckets", async () => {
+    const { consumeFrameRate } = await getAuth();
+    const pk1 = `pk1-${Date.now()}`;
+    for (let i = 0; i < 120; i++) consumeFrameRate(pk1);
+    expect(consumeFrameRate(pk1)).toBe(false);
+    expect(consumeFrameRate(`pk2-${Date.now()}`)).toBe(true);
+  });
+});
+
 describe("rate bucket eviction", () => {
   it("evicts idle buckets so the map stays bounded", async () => {
-    const { consumeChallengeRate, runAuthMaintenance, clearRateBuckets } = await getAuth();
+    const { consumeChallengeRate, runAuthMaintenance, clearRateBuckets } =
+      await getAuth();
     clearRateBuckets(); // start from a clean slate
     const base = Date.now();
     for (let i = 0; i < 50; i++) consumeChallengeRate(`evict-${base}-${i}`);
@@ -70,7 +93,8 @@ describe("rate bucket eviction", () => {
   });
 
   it("keeps recently-active buckets", async () => {
-    const { consumeChallengeRate, runAuthMaintenance, clearRateBuckets } = await getAuth();
+    const { consumeChallengeRate, runAuthMaintenance, clearRateBuckets } =
+      await getAuth();
     clearRateBuckets();
     const base = Date.now();
     consumeChallengeRate(`fresh-${base}`);

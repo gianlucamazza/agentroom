@@ -80,6 +80,20 @@ describe("parseFrame", () => {
     expect(parseFrame(routed({ ciphertext: "" })).ok).toBe(false);
   });
 
+  it("rejects oversized fields (max length bounds)", () => {
+    expect(parseFrame(routed({ sig: "x".repeat(513) })).ok).toBe(false);
+    expect(parseFrame(routed({ from: "x".repeat(513) })).ok).toBe(false);
+    expect(parseFrame(routed({ ciphertext: "x".repeat(196_609) })).ok).toBe(
+      false,
+    );
+  });
+
+  it("accepts a large ciphertext within the bound", () => {
+    expect(parseFrame(routed({ ciphertext: "x".repeat(196_608) })).ok).toBe(
+      true,
+    );
+  });
+
   it("surfaces a non-empty error string on failure", () => {
     const r = parseFrame(ping({ type: "WAT" }));
     expect(r.ok).toBe(false);

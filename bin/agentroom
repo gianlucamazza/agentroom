@@ -18936,7 +18936,7 @@ async function parseInviteUrl(url2) {
     return { ok: false, error: String(e) };
   }
 }
-var require2, sodium, libsodium_cjs_default, _ready, PROTOCOL_VERSION, PROTOCOL_VERSION_V1, base, b64, HelloSchema, HelloAckSchema, InvitePublishSchema, InviteClaimSchema, RoutedSchema, AckSchema, DeliverySchema, PingSchema, PongSchema, ErrorSchema, AnyFrameSchema;
+var require2, sodium, libsodium_cjs_default, _ready, PROTOCOL_VERSION, PROTOCOL_VERSION_V1, base, b64, b64Blob, b64Cipher, HelloSchema, HelloAckSchema, InvitePublishSchema, InviteClaimSchema, RoutedSchema, AckSchema, DeliverySchema, PingSchema, PongSchema, ErrorSchema, AnyFrameSchema;
 var init_dist = __esm({
   "packages/protocol/dist/index.js"() {
     "use strict";
@@ -18952,29 +18952,31 @@ var init_dist = __esm({
       msg_id: external_exports.uuid(),
       ts: external_exports.number().int().positive()
     });
-    b64 = external_exports.string().min(1);
+    b64 = external_exports.string().min(1).max(512);
+    b64Blob = external_exports.string().min(1).max(16384);
+    b64Cipher = external_exports.string().min(1).max(196608);
     HelloSchema = base.extend({
       type: external_exports.literal("HELLO"),
       ed25519_pk: b64,
       x25519_pk: b64,
       sig: b64,
-      challenge: external_exports.string().min(1)
+      challenge: external_exports.string().min(1).max(256)
     });
     HelloAckSchema = base.extend({
       type: external_exports.literal("HELLO_ACK"),
-      session_token: external_exports.string().min(1)
+      session_token: external_exports.string().min(1).max(512)
     });
     InvitePublishSchema = base.extend({
       type: external_exports.literal("INVITE_PUBLISH"),
       invite_id: external_exports.uuid(),
-      blob: b64,
+      blob: b64Blob,
       expires_at: external_exports.number().int().positive()
     });
     InviteClaimSchema = base.extend({
       type: external_exports.literal("INVITE_CLAIM"),
       invite_id: external_exports.uuid(),
       from: b64,
-      ciphertext: b64,
+      ciphertext: b64Cipher,
       nonce: b64,
       sig: b64
     });
@@ -18982,7 +18984,7 @@ var init_dist = __esm({
       type: external_exports.enum(["MSG", "SESSION_INIT", "SESSION_ACK"]),
       from: b64,
       to: b64,
-      ciphertext: b64,
+      ciphertext: b64Cipher,
       nonce: b64,
       sig: b64,
       seq: external_exports.number().int().nonnegative(),
@@ -18992,7 +18994,7 @@ var init_dist = __esm({
       type: external_exports.literal("ACK"),
       ref_msg_id: external_exports.uuid(),
       status: external_exports.enum(["delivered", "queued", "error"]),
-      error: external_exports.string().optional()
+      error: external_exports.string().max(1024).optional()
     });
     DeliverySchema = base.extend({
       type: external_exports.literal("DELIVERY"),
@@ -19002,8 +19004,8 @@ var init_dist = __esm({
     PongSchema = base.extend({ type: external_exports.literal("PONG") });
     ErrorSchema = base.extend({
       type: external_exports.literal("ERROR"),
-      code: external_exports.string(),
-      message: external_exports.string()
+      code: external_exports.string().max(64),
+      message: external_exports.string().max(1024)
     });
     AnyFrameSchema = external_exports.discriminatedUnion("type", [
       HelloSchema,
@@ -19020,7 +19022,7 @@ var init_dist = __esm({
   }
 });
 
-// packages/server/dist/chunk-5IQFENBL.js
+// packages/server/dist/chunk-ZAAZVQWC.js
 import { createServer } from "http";
 import { readFileSync as readFileSync6, existsSync as existsSync8 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
@@ -19061,6 +19063,9 @@ function consumeChallengeRate(ip) {
 }
 function consumeHelloFailRate(ip) {
   return consumeRate(`hello_fail:${ip}`, 5, 5 / 60);
+}
+function consumeFrameRate(pk) {
+  return consumeRate(`frames:${pk}`, 120, 1);
 }
 function secret() {
   if (!_secret) {
@@ -19155,10 +19160,25 @@ function send(ws, data) {
   }
 }
 function errorFrame(code, message) {
-  return { v: PROTOCOL_VERSION, type: "ERROR", msg_id: randomUUID3(), ts: Date.now(), code, message };
+  return {
+    v: PROTOCOL_VERSION,
+    type: "ERROR",
+    msg_id: randomUUID3(),
+    ts: Date.now(),
+    code,
+    message
+  };
 }
 function ackFrame(ref_msg_id, status, error51) {
-  return { v: PROTOCOL_VERSION, type: "ACK", msg_id: randomUUID3(), ts: Date.now(), ref_msg_id, status, ...error51 !== void 0 ? { error: error51 } : {} };
+  return {
+    v: PROTOCOL_VERSION,
+    type: "ACK",
+    msg_id: randomUUID3(),
+    ts: Date.now(),
+    ref_msg_id,
+    status,
+    ...error51 !== void 0 ? { error: error51 } : {}
+  };
 }
 function flushPending(ws, pk) {
   const pending = store.dequeuePending(pk);
@@ -19166,7 +19186,13 @@ function flushPending(ws, pk) {
     try {
       const routed = JSON.parse(envelope);
       if (ws.readyState !== import_websocket.default.OPEN) break;
-      send(ws, { v: PROTOCOL_VERSION, type: "DELIVERY", msg_id: randomUUID3(), ts: Date.now(), routed });
+      send(ws, {
+        v: PROTOCOL_VERSION,
+        type: "DELIVERY",
+        msg_id: randomUUID3(),
+        ts: Date.now(),
+        routed
+      });
       store.deletePending(id);
     } catch {
       store.deletePending(id);
@@ -19180,10 +19206,17 @@ async function handleHello(ws, frame, remoteIp) {
     return;
   }
   const msgBytes = new TextEncoder().encode(frame.challenge);
-  const valid = await verify(msgBytes, fromBase64(frame.sig), fromBase64(frame.ed25519_pk));
+  const valid = await verify(
+    msgBytes,
+    fromBase64(frame.sig),
+    fromBase64(frame.ed25519_pk)
+  );
   if (!valid) {
     inc("hello_failures");
-    logEvent("warn", "hello.fail", { ip: remoteIp, pk: frame.ed25519_pk.slice(0, 8) });
+    logEvent("warn", "hello.fail", {
+      ip: remoteIp,
+      pk: frame.ed25519_pk.slice(0, 8)
+    });
     if (!consumeHelloFailRate(remoteIp)) {
       inc("rate_limit_hits");
       send(ws, errorFrame("RATE_LIMIT", "too many authentication failures"));
@@ -19196,7 +19229,13 @@ async function handleHello(ws, frame, remoteIp) {
   }
   store.upsertAgent(frame.ed25519_pk, frame.x25519_pk);
   const session_token = issueSessionToken(frame.ed25519_pk);
-  send(ws, { v: PROTOCOL_VERSION, type: "HELLO_ACK", msg_id: randomUUID3(), ts: Date.now(), session_token });
+  send(ws, {
+    v: PROTOCOL_VERSION,
+    type: "HELLO_ACK",
+    msg_id: randomUUID3(),
+    ts: Date.now(),
+    session_token
+  });
   const existing = agents.get(frame.ed25519_pk);
   if (existing && existing.ws !== ws && existing.ws.readyState === import_websocket.default.OPEN) {
     existing.ws.close(1e3, "replaced by new connection");
@@ -19213,7 +19252,18 @@ function handleInvitePublish(ws, frame) {
     send(ws, errorFrame("UNAUTH", "not authenticated"));
     return;
   }
-  store.publishInvite(frame.invite_id, frame.blob, pk, frame.expires_at);
+  const maxInvites = parseInt(process.env["MAX_INVITES_PER_PK"] ?? "20", 10);
+  if (store.countOpenInvitesByPk(pk) >= maxInvites) {
+    send(ws, errorFrame("INVITE_QUOTA", "too many unclaimed invites"));
+    return;
+  }
+  const maxExpiresAt = Date.now() + 7 * 24 * 36e5;
+  store.publishInvite(
+    frame.invite_id,
+    frame.blob,
+    pk,
+    Math.min(frame.expires_at, maxExpiresAt)
+  );
   send(ws, ackFrame(frame.msg_id, "delivered"));
 }
 async function handleInviteClaim(ws, frame) {
@@ -19226,13 +19276,32 @@ async function handleInviteClaim(ws, frame) {
     send(ws, errorFrame("ALREADY_CLAIMED", "invite already used"));
     return;
   }
+  if (invite.expires_at <= Date.now()) {
+    send(ws, errorFrame("EXPIRED", "invite expired"));
+    return;
+  }
   const sigPayload = new TextEncoder().encode(
-    JSON.stringify({ from: frame.from, to: invite.inviter_pk, seq: 0, nonce: frame.nonce })
+    JSON.stringify({
+      from: frame.from,
+      to: invite.inviter_pk,
+      seq: 0,
+      nonce: frame.nonce
+    })
   );
-  const claimSigValid = await verify(sigPayload, fromBase64(frame.sig), fromBase64(frame.from));
+  const claimSigValid = await verify(
+    sigPayload,
+    fromBase64(frame.sig),
+    fromBase64(frame.from)
+  );
   if (!claimSigValid) {
-    logEvent("warn", "invite_claim.invalid_sig", { from: frame.from.slice(0, 8), invite_id: frame.invite_id });
-    send(ws, errorFrame("INVALID_SIG", "INVITE_CLAIM signature verification failed"));
+    logEvent("warn", "invite_claim.invalid_sig", {
+      from: frame.from.slice(0, 8),
+      invite_id: frame.invite_id
+    });
+    send(
+      ws,
+      errorFrame("INVALID_SIG", "INVITE_CLAIM signature verification failed")
+    );
     return;
   }
   const maxMsgs = parseInt(process.env["MAX_PENDING_MSGS"] ?? "500", 10);
@@ -19259,9 +19328,19 @@ async function handleInviteClaim(ws, frame) {
   };
   const inviter = agents.get(invite.inviter_pk);
   if (inviter) {
-    send(inviter.ws, { v: PROTOCOL_VERSION, type: "DELIVERY", msg_id: randomUUID3(), ts: Date.now(), routed: initFrame });
+    send(inviter.ws, {
+      v: PROTOCOL_VERSION,
+      type: "DELIVERY",
+      msg_id: randomUUID3(),
+      ts: Date.now(),
+      routed: initFrame
+    });
   } else {
-    store.enqueuePending(randomUUID3(), invite.inviter_pk, JSON.stringify(initFrame));
+    store.enqueuePending(
+      randomUUID3(),
+      invite.inviter_pk,
+      JSON.stringify(initFrame)
+    );
   }
   send(ws, ackFrame(frame.msg_id, "queued"));
 }
@@ -19274,7 +19353,13 @@ function handleRouted(ws, frame) {
   const maxMsgs = parseInt(process.env["MAX_PENDING_MSGS"] ?? "500", 10);
   const recipient = agents.get(frame.to);
   if (recipient) {
-    send(recipient.ws, { v: PROTOCOL_VERSION, type: "DELIVERY", msg_id: randomUUID3(), ts: Date.now(), routed: frame });
+    send(recipient.ws, {
+      v: PROTOCOL_VERSION,
+      type: "DELIVERY",
+      msg_id: randomUUID3(),
+      ts: Date.now(),
+      routed: frame
+    });
     send(ws, ackFrame(frame.msg_id, "delivered"));
     inc("messages_routed_total");
   } else {
@@ -19322,6 +19407,12 @@ function handleConnection(ws, req) {
       return;
     }
     const frame = result.data;
+    const authedPk = getPk(ws);
+    if (authedPk && !consumeFrameRate(authedPk)) {
+      inc("rate_limit_hits");
+      send(ws, errorFrame("RATE_LIMIT", "too many frames"));
+      return;
+    }
     if (frame.type === "PING") {
       send(ws, { ...frame, type: "PONG" });
       return;
@@ -19331,7 +19422,7 @@ function handleConnection(ws, req) {
       await handleHello(ws, frame, remoteIp);
       return;
     }
-    if (!getPk(ws)) {
+    if (!authedPk) {
       send(ws, errorFrame("UNAUTH", "authenticate first with HELLO"));
       return;
     }
@@ -19363,11 +19454,24 @@ function handleConnection(ws, req) {
   ws.on("error", () => ws.close());
 }
 function attachWss(httpServer) {
-  const wss = new import_websocket_server.default({ noServer: true });
+  const maxPayload = parseInt(
+    process.env["WS_MAX_PAYLOAD"] ?? String(256 * 1024),
+    10
+  );
+  const wss = new import_websocket_server.default({ noServer: true, maxPayload });
   _wss = wss;
   httpServer.on("upgrade", (req, socket, head) => {
     const { pathname } = new URL(req.url ?? "/", "http://localhost");
     if (pathname !== "/ws") {
+      socket.destroy();
+      return;
+    }
+    const maxConns = parseInt(process.env["MAX_CONNECTIONS"] ?? "500", 10);
+    if (wss.clients.size >= maxConns) {
+      logEvent("warn", "upgrade.refused", { reason: "max_connections" });
+      socket.write(
+        "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n"
+      );
       socket.destroy();
       return;
     }
@@ -19495,8 +19599,8 @@ Copy .env.example \u2192 .env and fill in the values.`
   return httpServer;
 }
 var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, BUCKET_IDLE_TTL_MS, challengeCleanupTimer, rateBuckets, _secret, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, startedAt, TRUST_PROXY;
-var init_chunk_5IQFENBL = __esm({
-  "packages/server/dist/chunk-5IQFENBL.js"() {
+var init_chunk_ZAAZVQWC = __esm({
+  "packages/server/dist/chunk-ZAAZVQWC.js"() {
     "use strict";
     init_wrapper();
     init_dist();
@@ -19532,6 +19636,7 @@ var init_chunk_5IQFENBL = __esm({
 
   CREATE INDEX IF NOT EXISTS idx_pending_to ON pending_messages(to_pk);
   CREATE INDEX IF NOT EXISTS idx_invites_expires ON invites(expires_at);
+  CREATE INDEX IF NOT EXISTS idx_invites_inviter ON invites(inviter_pk);
 `);
     stmts = {
       upsertAgent: db.prepare(
@@ -19539,19 +19644,29 @@ var init_chunk_5IQFENBL = __esm({
      VALUES (?, ?, unixepoch())
      ON CONFLICT(ed25519_pk) DO UPDATE SET x25519_pk=excluded.x25519_pk, last_seen=excluded.last_seen`
       ),
-      touchAgent: db.prepare(`UPDATE agents SET last_seen=unixepoch() WHERE ed25519_pk=?`),
-      getAgent: db.prepare(`SELECT ed25519_pk, x25519_pk FROM agents WHERE ed25519_pk=?`),
+      touchAgent: db.prepare(
+        `UPDATE agents SET last_seen=unixepoch() WHERE ed25519_pk=?`
+      ),
+      getAgent: db.prepare(
+        `SELECT ed25519_pk, x25519_pk FROM agents WHERE ed25519_pk=?`
+      ),
       countAgents: db.prepare(`SELECT COUNT(*) as n FROM agents`),
       publishInvite: db.prepare(
         `INSERT OR IGNORE INTO invites (invite_id, blob, inviter_pk, expires_at)
      VALUES (?, ?, ?, ?)`
       ),
+      // expires_at is epoch MILLISECONDS (set by the client from the invite blob),
+      // so it must be compared against a JS Date.now() parameter — comparing it to
+      // SQLite's unixepoch() (seconds) silently never expires anything.
       claimInvite: db.prepare(
         `UPDATE invites SET claimed_at=unixepoch()
-     WHERE invite_id=? AND claimed_at IS NULL AND expires_at > unixepoch()`
+     WHERE invite_id=? AND claimed_at IS NULL AND expires_at > ?`
       ),
       getInvite: db.prepare(`SELECT * FROM invites WHERE invite_id=?`),
       countInvites: db.prepare(`SELECT COUNT(*) as n FROM invites`),
+      countOpenInvitesByPk: db.prepare(
+        `SELECT COUNT(*) as n FROM invites WHERE inviter_pk=? AND claimed_at IS NULL AND expires_at > ?`
+      ),
       enqueuePending: db.prepare(
         `INSERT INTO pending_messages (id, to_pk, envelope) VALUES (?, ?, ?)`
       ),
@@ -19559,10 +19674,12 @@ var init_chunk_5IQFENBL = __esm({
         `SELECT id, envelope FROM pending_messages WHERE to_pk=? ORDER BY created_at ASC`
       ),
       deletePending: db.prepare(`DELETE FROM pending_messages WHERE id=?`),
-      countPending: db.prepare(`SELECT COUNT(*) as n FROM pending_messages WHERE to_pk=?`),
+      countPending: db.prepare(
+        `SELECT COUNT(*) as n FROM pending_messages WHERE to_pk=?`
+      ),
       countAllPending: db.prepare(`SELECT COUNT(*) as n FROM pending_messages`),
       pruneExpiredInvites: db.prepare(
-        `DELETE FROM invites WHERE expires_at <= unixepoch() AND claimed_at IS NULL`
+        `DELETE FROM invites WHERE expires_at <= ? AND claimed_at IS NULL`
       ),
       pruneClaimedInvites: db.prepare(
         `DELETE FROM invites WHERE claimed_at IS NOT NULL AND claimed_at < ?`
@@ -19591,7 +19708,7 @@ var init_chunk_5IQFENBL = __esm({
         stmts.publishInvite.run(invite_id, blob, inviter_pk, expires_at);
       },
       claimInvite(invite_id) {
-        const info = stmts.claimInvite.run(invite_id);
+        const info = stmts.claimInvite.run(invite_id, Date.now());
         return info.changes > 0;
       },
       getInvite(invite_id) {
@@ -19599,6 +19716,10 @@ var init_chunk_5IQFENBL = __esm({
       },
       countInvites() {
         return stmts.countInvites.get().n;
+      },
+      countOpenInvitesByPk(inviter_pk) {
+        const row = stmts.countOpenInvitesByPk.get(inviter_pk, Date.now());
+        return row?.n ?? 0;
       },
       enqueuePending(id, to_pk, envelope) {
         stmts.enqueuePending.run(id, to_pk, envelope);
@@ -19617,7 +19738,7 @@ var init_chunk_5IQFENBL = __esm({
         return stmts.countAllPending.get().n;
       },
       prune(ttl_days = 7) {
-        stmts.pruneExpiredInvites.run();
+        stmts.pruneExpiredInvites.run(Date.now());
         stmts.pruneOldPending.run(ttl_days * 86400);
         const claimedCutoffSec = Math.floor(Date.now() / 1e3) - 30 * 86400;
         stmts.pruneClaimedInvites.run(claimedCutoffSec);
@@ -19655,7 +19776,7 @@ __export(server_exports, {
 var init_server = __esm({
   "packages/server/dist/server.js"() {
     "use strict";
-    init_chunk_5IQFENBL();
+    init_chunk_ZAAZVQWC();
   }
 });
 

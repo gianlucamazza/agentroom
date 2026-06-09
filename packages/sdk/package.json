@@ -24,7 +24,8 @@
   },
   "dependencies": {
     "@agentroom/protocol": "*",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/ws": "^8.5.12"

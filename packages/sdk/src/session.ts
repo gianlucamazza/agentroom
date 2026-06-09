@@ -13,6 +13,7 @@ import {
   type Bytes,
   type AgentKeypair,
 } from "@agentroom/protocol";
+import { z } from "zod";
 
 export interface SessionKeys {
   sendKey: Bytes;
@@ -67,7 +68,7 @@ export interface RatchetState {
 
   // DH ratchet fields
   sendEphemeral: AgentKeypair;
-  recvEphemeralPk: Bytes;  // peer's current ratchet ephemeral pub (seeded at init)
+  recvEphemeralPk: Bytes; // peer's current ratchet ephemeral pub (seeded at init)
 
   sendSeq: number;
   recvSeq: number;
@@ -86,18 +87,31 @@ export interface RatchetState {
 // Serialization / Deserialization
 // ─────────────────────────────────────────────
 
-interface SerializedRatchetState {
-  peerPk: string;
-  sendChainKey: string;
-  recvChainKey: string;
-  sendEphemeral: { ed25519_pk: string; ed25519_sk: string; x25519_pk: string; x25519_sk: string };
-  recvEphemeralPk: string;
-  sendSeq: number;
-  recvSeq: number;
-  needsSendDhStep: boolean;
-  skippedMessageKeys: Array<[string, { key: string; addedAt: number }]>;
-  lastUsedAt: number;
-}
+// Single source of truth for the on-disk session shape: validates AND types it.
+// deserializeSession must fail fast on a truncated/corrupt file rather than load a
+// state with `undefined` scalars (which would silently break the ratchet).
+const b64 = z.string().min(1);
+const SerializedRatchetSchema = z.object({
+  peerPk: z.string().min(1),
+  sendChainKey: b64,
+  recvChainKey: b64,
+  sendEphemeral: z.object({
+    ed25519_pk: b64,
+    ed25519_sk: b64,
+    x25519_pk: b64,
+    x25519_sk: b64,
+  }),
+  recvEphemeralPk: b64,
+  sendSeq: z.number().int(),
+  recvSeq: z.number().int(),
+  needsSendDhStep: z.boolean(),
+  skippedMessageKeys: z.array(
+    z.tuple([z.string(), z.object({ key: b64, addedAt: z.number().int() })]),
+  ),
+  // Optional: sessions serialized before lastUsedAt existed fall back to now.
+  lastUsedAt: z.number().int().optional(),
+});
+type SerializedRatchetState = z.infer<typeof SerializedRatchetSchema>;
 
 export function serializeSession(state: RatchetState): string {
   const serialized: SerializedRatchetState = {
@@ -123,9 +137,24 @@ export function serializeSession(state: RatchetState): string {
 }
 
 export function deserializeSession(json: string): RatchetState {
-  const s = JSON.parse(json) as SerializedRatchetState;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch (e) {
+    throw new Error(
+      `corrupt session state: invalid JSON (${e instanceof Error ? e.message : String(e)})`,
+    );
+  }
+  const parsed = SerializedRatchetSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new Error(`corrupt session state: ${parsed.error.message}`);
+  }
+  const s = parsed.data;
   const skippedMap = new Map<string, { key: Bytes; addedAt: number }>(
-    s.skippedMessageKeys.map(([k, v]) => [k, { key: fromBase64(v.key), addedAt: v.addedAt }]),
+    s.skippedMessageKeys.map(([k, v]) => [
+      k,
+      { key: fromBase64(v.key), addedAt: v.addedAt },
+    ]),
   );
   return {
     peerPk: s.peerPk,
@@ -146,7 +175,9 @@ export function deserializeSession(json: string): RatchetState {
   };
 }
 
-const MAX_SKIP = 100;
+/** Max out-of-order message keys buffered per chain — also bounds the per-frame
+ * key-derivation work, so a peer can't force unbounded computation with a large seq. */
+export const MAX_SKIP = 100;
 const SKIP_KEY_TTL_MS = 5 * 60_000;
 
 // ─────────────────────────────────────────────
@@ -183,7 +214,11 @@ export class SessionStore {
   async init(
     peerPk: string,
     bootstrapKeys: SessionKeys,
-    seed: { identity: AgentKeypair; peerX25519Pk: Bytes; initiateRatchet: boolean },
+    seed: {
+      identity: AgentKeypair;
+      peerX25519Pk: Bytes;
+      initiateRatchet: boolean;
+    },
   ): Promise<RatchetState> {
     const session: RatchetState = {
       peerPk,
@@ -214,7 +249,10 @@ export async function encryptMessage(
   // ephemeral; strict alternation (single initiator) precludes concurrent rotation.
   if (session.needsSendDhStep && session.recvEphemeralPk !== null) {
     const newEph = await generateKeypair();
-    const dhOut = await dhSharedSecret(newEph.x25519_sk, session.recvEphemeralPk);
+    const dhOut = await dhSharedSecret(
+      newEph.x25519_sk,
+      session.recvEphemeralPk,
+    );
     const { chainKey } = await ratchetStep(session.sendChainKey, dhOut);
     session.sendChainKey = chainKey;
     session.sendEphemeral = newEph;
@@ -226,7 +264,10 @@ export async function encryptMessage(
   const { ciphertext, nonce } = await seal(plaintext, msgKey);
 
   // Advance send chain (forward secrecy: old key discarded)
-  const { chainKey: nextChainKey } = await ratchetStep(session.sendChainKey, msgKey);
+  const { chainKey: nextChainKey } = await ratchetStep(
+    session.sendChainKey,
+    msgKey,
+  );
   session.sendChainKey = nextChainKey;
   session.sendSeq++;
   session.lastUsedAt = Date.now();
@@ -267,12 +308,12 @@ export async function decryptMessage(
   // State is mutated below (DH ratchet + chain advance). If open() fails,
   // we restore to pre-mutation state so the session remains functional.
   const snapshot = {
-    recvChainKey:    session.recvChainKey,
+    recvChainKey: session.recvChainKey,
     recvEphemeralPk: session.recvEphemeralPk,
-    sendChainKey:    session.sendChainKey,
-    sendEphemeral:   session.sendEphemeral,
-    sendSeq:         session.sendSeq,
-    recvSeq:         session.recvSeq,
+    sendChainKey: session.sendChainKey,
+    sendEphemeral: session.sendEphemeral,
+    sendSeq: session.sendSeq,
+    recvSeq: session.recvSeq,
     needsSendDhStep: session.needsSendDhStep,
   };
 
@@ -287,8 +328,14 @@ export async function decryptMessage(
         // transport). Skipped keys already buffered before the rotation stay retrievable.
         const newPeerPk = fromBase64(ratchet_pk_b64);
         // DH against OUR current sending ephemeral — the key the sender DH'd against.
-        const dhOut = await dhSharedSecret(session.sendEphemeral.x25519_sk, newPeerPk);
-        const { chainKey: newRecvChain } = await ratchetStep(session.recvChainKey, dhOut);
+        const dhOut = await dhSharedSecret(
+          session.sendEphemeral.x25519_sk,
+          newPeerPk,
+        );
+        const { chainKey: newRecvChain } = await ratchetStep(
+          session.recvChainKey,
+          dhOut,
+        );
         session.recvChainKey = newRecvChain;
         session.recvEphemeralPk = newPeerPk;
         // Reset recv counter for the new chain
@@ -301,7 +348,9 @@ export async function decryptMessage(
     // Replay check — AFTER the DH step so a rotation (which resets recvSeq for the new
     // chain) doesn't make a legitimate seq look like a replay of the previous chain.
     if (seq <= session.recvSeq) {
-      throw new Error(`replay detected: seq ${seq} <= last seen ${session.recvSeq}`);
+      throw new Error(
+        `replay detected: seq ${seq} <= last seen ${session.recvSeq}`,
+      );
     }
 
     // Store skipped keys if seq > recvSeq + 1 (out-of-order: advance chain to seq)
@@ -312,10 +361,17 @@ export async function decryptMessage(
 
     // Decrypt with current recv chain — this is the only step that can fail
     const msgKey = await messageKey(session.recvChainKey, seq);
-    const plaintext = await open(fromBase64(ciphertext), fromBase64(nonce), msgKey);
+    const plaintext = await open(
+      fromBase64(ciphertext),
+      fromBase64(nonce),
+      msgKey,
+    );
 
     // open() succeeded: advance recv chain and commit
-    const { chainKey: nextChainKey } = await ratchetStep(session.recvChainKey, msgKey);
+    const { chainKey: nextChainKey } = await ratchetStep(
+      session.recvChainKey,
+      msgKey,
+    );
     session.recvChainKey = nextChainKey;
     session.recvSeq = seq;
     session.lastUsedAt = Date.now();
@@ -323,12 +379,12 @@ export async function decryptMessage(
     return plaintext;
   } catch (e) {
     // Rollback chain state — skippedMessageKeys mutations are intentionally kept
-    session.recvChainKey    = snapshot.recvChainKey;
+    session.recvChainKey = snapshot.recvChainKey;
     session.recvEphemeralPk = snapshot.recvEphemeralPk;
-    session.sendChainKey    = snapshot.sendChainKey;
-    session.sendEphemeral   = snapshot.sendEphemeral;
-    session.sendSeq         = snapshot.sendSeq;
-    session.recvSeq         = snapshot.recvSeq;
+    session.sendChainKey = snapshot.sendChainKey;
+    session.sendEphemeral = snapshot.sendEphemeral;
+    session.sendSeq = snapshot.sendSeq;
+    session.recvSeq = snapshot.recvSeq;
     session.needsSendDhStep = snapshot.needsSendDhStep;
     throw e;
   }
@@ -347,7 +403,9 @@ async function storeSkippedKeys(
   if (upToSeq <= startSeq) return;
   const count = Math.min(upToSeq - startSeq, MAX_SKIP);
   if (count === MAX_SKIP && upToSeq - startSeq > MAX_SKIP) {
-    console.warn(`[agentroom] skipping ${upToSeq - startSeq - MAX_SKIP} out-of-order messages (exceed MAX_SKIP=${MAX_SKIP})`);
+    console.warn(
+      `[agentroom] skipping ${upToSeq - startSeq - MAX_SKIP} out-of-order messages (exceed MAX_SKIP=${MAX_SKIP})`,
+    );
   }
   const now = Date.now();
 
@@ -384,7 +442,9 @@ export function pruneSkippedInPlace(
   }
   // If still over limit, remove oldest entries first
   if (state.skippedMessageKeys.size > maxSize) {
-    const sorted = [...state.skippedMessageKeys.entries()].sort((a, b) => a[1].addedAt - b[1].addedAt);
+    const sorted = [...state.skippedMessageKeys.entries()].sort(
+      (a, b) => a[1].addedAt - b[1].addedAt,
+    );
     const toRemove = sorted.slice(0, state.skippedMessageKeys.size - maxSize);
     for (const [k] of toRemove) state.skippedMessageKeys.delete(k);
   }

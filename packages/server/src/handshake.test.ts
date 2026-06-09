@@ -66,15 +66,28 @@ describe("store: agents + invites + pending", () => {
 
   it("publish + claim invite (single-use)", () => {
     const id = randomUUID();
-    store.publishInvite(id, "blob", "inviter_pk", Math.floor(Date.now() / 1000) + 3600);
+    // expires_at is epoch ms, matching what clients send in INVITE_PUBLISH
+    store.publishInvite(id, "blob", "inviter_pk", Date.now() + 3_600_000);
     expect(store.claimInvite(id)).toBe(true);
     expect(store.claimInvite(id)).toBe(false);
   });
 
   it("invite expired → claim fails", () => {
     const id = randomUUID();
-    store.publishInvite(id, "blob", "inviter_pk", Math.floor(Date.now() / 1000) - 1);
+    store.publishInvite(id, "blob", "inviter_pk", Date.now() - 1);
     expect(store.claimInvite(id)).toBe(false);
+  });
+
+  it("expired invites are pruned, open invites counted per inviter", () => {
+    const pk = `inviter_${randomUUID()}`;
+    const live = randomUUID();
+    const dead = randomUUID();
+    store.publishInvite(live, "blob", pk, Date.now() + 3_600_000);
+    store.publishInvite(dead, "blob", pk, Date.now() - 1);
+    expect(store.countOpenInvitesByPk(pk)).toBe(1);
+    store.prune();
+    expect(store.getInvite(dead)).toBeUndefined();
+    expect(store.getInvite(live)).toBeDefined();
   });
 
   it("pending messages enqueue + dequeue + delete", () => {
@@ -126,21 +139,54 @@ describe("crypto: full E2E invite handshake simulation", () => {
   it("message encrypt → decrypt E2E (ratchet)", async () => {
     const alice = await generateKeypair();
     const bob = await generateKeypair();
-    const { signed } = await createInvite(alice.ed25519_pk, alice.ed25519_sk, alice.x25519_pk, "wss://test.local/ws");
-    const { deriveSessionKeys, SessionStore, encryptMessage, decryptMessage } = await import("@agentroom/sdk");
+    const { signed } = await createInvite(
+      alice.ed25519_pk,
+      alice.ed25519_sk,
+      alice.x25519_pk,
+      "wss://test.local/ws",
+    );
+    const { deriveSessionKeys, SessionStore, encryptMessage, decryptMessage } =
+      await import("@agentroom/sdk");
 
-    const aliceKeys = await deriveSessionKeys(alice.x25519_sk, bob.x25519_pk, signed.blob.nonce, "inviter");
-    const bobKeys   = await deriveSessionKeys(bob.x25519_sk, alice.x25519_pk, signed.blob.nonce, "invitee");
+    const aliceKeys = await deriveSessionKeys(
+      alice.x25519_sk,
+      bob.x25519_pk,
+      signed.blob.nonce,
+      "inviter",
+    );
+    const bobKeys = await deriveSessionKeys(
+      bob.x25519_sk,
+      alice.x25519_pk,
+      signed.blob.nonce,
+      "invitee",
+    );
 
     const store = new SessionStore();
-    const aliceSession = await store.init(toBase64(bob.ed25519_pk), aliceKeys, { identity: alice, peerX25519Pk: bob.x25519_pk, initiateRatchet: true });
-    const bobSession   = await store.init(toBase64(alice.ed25519_pk), bobKeys, { identity: bob, peerX25519Pk: alice.x25519_pk, initiateRatchet: false });
+    const aliceSession = await store.init(toBase64(bob.ed25519_pk), aliceKeys, {
+      identity: alice,
+      peerX25519Pk: bob.x25519_pk,
+      initiateRatchet: true,
+    });
+    const bobSession = await store.init(toBase64(alice.ed25519_pk), bobKeys, {
+      identity: bob,
+      peerX25519Pk: alice.x25519_pk,
+      initiateRatchet: false,
+    });
 
     const plaintext = new TextEncoder().encode("hello from alice");
-    const { ciphertext, nonce, ratchet_pk } = await encryptMessage(aliceSession, plaintext);
+    const { ciphertext, nonce, ratchet_pk } = await encryptMessage(
+      aliceSession,
+      plaintext,
+    );
     const seq = aliceSession.sendSeq - 1;
 
-    const recovered = await decryptMessage(bobSession, ciphertext, nonce, seq, ratchet_pk);
+    const recovered = await decryptMessage(
+      bobSession,
+      ciphertext,
+      nonce,
+      seq,
+      ratchet_pk,
+    );
     expect(new TextDecoder().decode(recovered)).toBe("hello from alice");
   });
 
@@ -152,7 +198,10 @@ describe("crypto: full E2E invite handshake simulation", () => {
       srv.once("error", rej);
       srv.listen(0, "127.0.0.1", () => {
         const addr = srv.address();
-        if (!addr || typeof addr === "string") { rej(new Error("bad addr")); return; }
+        if (!addr || typeof addr === "string") {
+          rej(new Error("bad addr"));
+          return;
+        }
         res(`ws://127.0.0.1:${addr.port}/ws`);
       });
     });
@@ -164,24 +213,39 @@ describe("crypto: full E2E invite handshake simulation", () => {
     // Alice publishes an invite
     store.upsertAgent(toBase64(alice.ed25519_pk), toBase64(alice.x25519_pk));
     const inviteId = randomUUID();
-    store.publishInvite(inviteId, "blob", toBase64(alice.ed25519_pk), Math.floor(Date.now() / 1000) + 3600);
+    store.publishInvite(
+      inviteId,
+      "blob",
+      toBase64(alice.ed25519_pk),
+      Date.now() + 3_600_000,
+    );
 
     // Mallory authenticates with own identity
     const chResp = await fetch(`${httpBase}/auth/challenge`);
-    const { challenge } = await chResp.json() as { challenge: string };
+    const { challenge } = (await chResp.json()) as { challenge: string };
     const malloryWs = await new Promise<WebSocket>((resolve, reject) => {
       const ws = new WebSocket(url);
       ws.once("open", async () => {
-        const sig = toBase64(await sign(new TextEncoder().encode(challenge), mallory.ed25519_sk));
-        ws.send(JSON.stringify({
-          v: PROTOCOL_VERSION, type: "HELLO", msg_id: randomUUID(), ts: Date.now(),
-          ed25519_pk: toBase64(mallory.ed25519_pk), x25519_pk: toBase64(mallory.x25519_pk),
-          sig, challenge,
-        }));
+        const sig = toBase64(
+          await sign(new TextEncoder().encode(challenge), mallory.ed25519_sk),
+        );
+        ws.send(
+          JSON.stringify({
+            v: PROTOCOL_VERSION,
+            type: "HELLO",
+            msg_id: randomUUID(),
+            ts: Date.now(),
+            ed25519_pk: toBase64(mallory.ed25519_pk),
+            x25519_pk: toBase64(mallory.x25519_pk),
+            sig,
+            challenge,
+          }),
+        );
       });
       ws.once("message", (raw) => {
         const f = JSON.parse(raw.toString()) as { type: string };
-        if (f.type === "HELLO_ACK") resolve(ws); else reject(new Error(JSON.stringify(f)));
+        if (f.type === "HELLO_ACK") resolve(ws);
+        else reject(new Error(JSON.stringify(f)));
       });
       ws.once("error", reject);
     });
@@ -190,48 +254,95 @@ describe("crypto: full E2E invite handshake simulation", () => {
     const ciphertextB64 = toBase64(new TextEncoder().encode("payload"));
     // Sig payload: from=alice.pk (lie), to=alice.pk, seq=0, nonce=ciphertextB64
     const sigPayload = new TextEncoder().encode(
-      JSON.stringify({ from: toBase64(alice.ed25519_pk), to: toBase64(alice.ed25519_pk), seq: 0, nonce: ciphertextB64 }),
+      JSON.stringify({
+        from: toBase64(alice.ed25519_pk),
+        to: toBase64(alice.ed25519_pk),
+        seq: 0,
+        nonce: ciphertextB64,
+      }),
     );
     const forgeSig = toBase64(await sign(sigPayload, mallory.ed25519_sk)); // signed with MALLORY'S key
 
-    const response = await new Promise<{ type: string; code?: string }>((resolve) => {
-      malloryWs.once("message", (raw) => resolve(JSON.parse(raw.toString())));
-      malloryWs.send(JSON.stringify({
-        v: PROTOCOL_VERSION, type: "INVITE_CLAIM", msg_id: randomUUID(), ts: Date.now(),
-        invite_id: inviteId,
-        from: toBase64(alice.ed25519_pk), // lying about who the claimer is
-        ciphertext: ciphertextB64, nonce: ciphertextB64,
-        sig: forgeSig,
-      }));
-    });
+    const response = await new Promise<{ type: string; code?: string }>(
+      (resolve) => {
+        malloryWs.once("message", (raw) => resolve(JSON.parse(raw.toString())));
+        malloryWs.send(
+          JSON.stringify({
+            v: PROTOCOL_VERSION,
+            type: "INVITE_CLAIM",
+            msg_id: randomUUID(),
+            ts: Date.now(),
+            invite_id: inviteId,
+            from: toBase64(alice.ed25519_pk), // lying about who the claimer is
+            ciphertext: ciphertextB64,
+            nonce: ciphertextB64,
+            sig: forgeSig,
+          }),
+        );
+      },
+    );
 
     // Server verifies sig against frame.from (=alice.pk) but sig was made by mallory → INVALID_SIG
     expect(response.type).toBe("ERROR");
     expect(response.code).toBe("INVALID_SIG");
 
     malloryWs.close();
-    await new Promise<void>((r) => srv.close(() => { wss2.close(); r(); }));
+    await new Promise<void>((r) =>
+      srv.close(() => {
+        wss2.close();
+        r();
+      }),
+    );
   });
 
   it("replay protection: same seq rejected", async () => {
     const alice = await generateKeypair();
     const bob = await generateKeypair();
-    const { signed } = await createInvite(alice.ed25519_pk, alice.ed25519_sk, alice.x25519_pk, "wss://test.local/ws");
-    const { deriveSessionKeys, SessionStore, encryptMessage, decryptMessage } = await import("@agentroom/sdk");
+    const { signed } = await createInvite(
+      alice.ed25519_pk,
+      alice.ed25519_sk,
+      alice.x25519_pk,
+      "wss://test.local/ws",
+    );
+    const { deriveSessionKeys, SessionStore, encryptMessage, decryptMessage } =
+      await import("@agentroom/sdk");
 
-    const aliceKeys = await deriveSessionKeys(alice.x25519_sk, bob.x25519_pk, signed.blob.nonce, "inviter");
-    const bobKeys   = await deriveSessionKeys(bob.x25519_sk, alice.x25519_pk, signed.blob.nonce, "invitee");
+    const aliceKeys = await deriveSessionKeys(
+      alice.x25519_sk,
+      bob.x25519_pk,
+      signed.blob.nonce,
+      "inviter",
+    );
+    const bobKeys = await deriveSessionKeys(
+      bob.x25519_sk,
+      alice.x25519_pk,
+      signed.blob.nonce,
+      "invitee",
+    );
 
     const store = new SessionStore();
-    const aliceSession = await store.init("alice-peer", aliceKeys, { identity: alice, peerX25519Pk: bob.x25519_pk, initiateRatchet: true });
-    const bobSession   = await store.init("bob-peer",   bobKeys, { identity: bob, peerX25519Pk: alice.x25519_pk, initiateRatchet: false });
+    const aliceSession = await store.init("alice-peer", aliceKeys, {
+      identity: alice,
+      peerX25519Pk: bob.x25519_pk,
+      initiateRatchet: true,
+    });
+    const bobSession = await store.init("bob-peer", bobKeys, {
+      identity: bob,
+      peerX25519Pk: alice.x25519_pk,
+      initiateRatchet: false,
+    });
 
     const msg = new TextEncoder().encode("first");
-    const { ciphertext, nonce, ratchet_pk } = await encryptMessage(aliceSession, msg);
+    const { ciphertext, nonce, ratchet_pk } = await encryptMessage(
+      aliceSession,
+      msg,
+    );
     const seq = aliceSession.sendSeq - 1;
 
     await decryptMessage(bobSession, ciphertext, nonce, seq, ratchet_pk);
     // replay without ratchet_pk → caught by recvSeq check
-    await expect(decryptMessage(bobSession, ciphertext, nonce, seq)).rejects.toThrow("replay");
+    await expect(
+      decryptMessage(bobSession, ciphertext, nonce, seq),
+    ).rejects.toThrow("replay");
   });
 });

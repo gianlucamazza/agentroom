@@ -4,7 +4,8 @@ import fs from "fs";
 
 // AGENTROOM_DB=:memory: in tests
 const DB_PATH =
-  process.env["AGENTROOM_DB"] ?? path.join(process.cwd(), "data", "agentroom.db");
+  process.env["AGENTROOM_DB"] ??
+  path.join(process.cwd(), "data", "agentroom.db");
 
 // Create the parent dir for file-backed DBs only — never for :memory:, and
 // based on the actual DB path (not a hardcoded cwd/data) so AGENTROOM_DB wins.
@@ -42,10 +43,17 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_pending_to ON pending_messages(to_pk);
   CREATE INDEX IF NOT EXISTS idx_invites_expires ON invites(expires_at);
+  CREATE INDEX IF NOT EXISTS idx_invites_inviter ON invites(inviter_pk);
 `);
 
 type AgentRow = { ed25519_pk: string; x25519_pk: string };
-type InviteRow = { invite_id: string; blob: string; inviter_pk: string; expires_at: number; claimed_at: number | null };
+type InviteRow = {
+  invite_id: string;
+  blob: string;
+  inviter_pk: string;
+  expires_at: number;
+  claimed_at: number | null;
+};
 type PendingRow = { id: string; envelope: string };
 
 const stmts = {
@@ -54,20 +62,30 @@ const stmts = {
      VALUES (?, ?, unixepoch())
      ON CONFLICT(ed25519_pk) DO UPDATE SET x25519_pk=excluded.x25519_pk, last_seen=excluded.last_seen`,
   ),
-  touchAgent: db.prepare(`UPDATE agents SET last_seen=unixepoch() WHERE ed25519_pk=?`),
-  getAgent: db.prepare(`SELECT ed25519_pk, x25519_pk FROM agents WHERE ed25519_pk=?`),
+  touchAgent: db.prepare(
+    `UPDATE agents SET last_seen=unixepoch() WHERE ed25519_pk=?`,
+  ),
+  getAgent: db.prepare(
+    `SELECT ed25519_pk, x25519_pk FROM agents WHERE ed25519_pk=?`,
+  ),
   countAgents: db.prepare(`SELECT COUNT(*) as n FROM agents`),
 
   publishInvite: db.prepare(
     `INSERT OR IGNORE INTO invites (invite_id, blob, inviter_pk, expires_at)
      VALUES (?, ?, ?, ?)`,
   ),
+  // expires_at is epoch MILLISECONDS (set by the client from the invite blob),
+  // so it must be compared against a JS Date.now() parameter — comparing it to
+  // SQLite's unixepoch() (seconds) silently never expires anything.
   claimInvite: db.prepare(
     `UPDATE invites SET claimed_at=unixepoch()
-     WHERE invite_id=? AND claimed_at IS NULL AND expires_at > unixepoch()`,
+     WHERE invite_id=? AND claimed_at IS NULL AND expires_at > ?`,
   ),
   getInvite: db.prepare(`SELECT * FROM invites WHERE invite_id=?`),
   countInvites: db.prepare(`SELECT COUNT(*) as n FROM invites`),
+  countOpenInvitesByPk: db.prepare(
+    `SELECT COUNT(*) as n FROM invites WHERE inviter_pk=? AND claimed_at IS NULL AND expires_at > ?`,
+  ),
 
   enqueuePending: db.prepare(
     `INSERT INTO pending_messages (id, to_pk, envelope) VALUES (?, ?, ?)`,
@@ -76,11 +94,13 @@ const stmts = {
     `SELECT id, envelope FROM pending_messages WHERE to_pk=? ORDER BY created_at ASC`,
   ),
   deletePending: db.prepare(`DELETE FROM pending_messages WHERE id=?`),
-  countPending: db.prepare(`SELECT COUNT(*) as n FROM pending_messages WHERE to_pk=?`),
+  countPending: db.prepare(
+    `SELECT COUNT(*) as n FROM pending_messages WHERE to_pk=?`,
+  ),
   countAllPending: db.prepare(`SELECT COUNT(*) as n FROM pending_messages`),
 
   pruneExpiredInvites: db.prepare(
-    `DELETE FROM invites WHERE expires_at <= unixepoch() AND claimed_at IS NULL`,
+    `DELETE FROM invites WHERE expires_at <= ? AND claimed_at IS NULL`,
   ),
   pruneClaimedInvites: db.prepare(
     `DELETE FROM invites WHERE claimed_at IS NOT NULL AND claimed_at < ?`,
@@ -91,7 +111,6 @@ const stmts = {
   pruneInactiveAgents: db.prepare(
     `DELETE FROM agents WHERE last_seen IS NOT NULL AND last_seen < unixepoch() - ?`,
   ),
-
 };
 
 export const store = {
@@ -108,11 +127,16 @@ export const store = {
     return (stmts.countAgents.get() as { n: number }).n;
   },
 
-  publishInvite(invite_id: string, blob: string, inviter_pk: string, expires_at: number) {
+  publishInvite(
+    invite_id: string,
+    blob: string,
+    inviter_pk: string,
+    expires_at: number,
+  ) {
     stmts.publishInvite.run(invite_id, blob, inviter_pk, expires_at);
   },
   claimInvite(invite_id: string): boolean {
-    const info = stmts.claimInvite.run(invite_id);
+    const info = stmts.claimInvite.run(invite_id, Date.now());
     return (info as unknown as { changes: number }).changes > 0;
   },
   getInvite(invite_id: string): InviteRow | undefined {
@@ -120,6 +144,12 @@ export const store = {
   },
   countInvites(): number {
     return (stmts.countInvites.get() as { n: number }).n;
+  },
+  countOpenInvitesByPk(inviter_pk: string): number {
+    const row = stmts.countOpenInvitesByPk.get(inviter_pk, Date.now()) as
+      | { n: number }
+      | undefined;
+    return row?.n ?? 0;
   },
 
   enqueuePending(id: string, to_pk: string, envelope: string) {
@@ -140,7 +170,7 @@ export const store = {
   },
 
   prune(ttl_days = 7) {
-    stmts.pruneExpiredInvites.run();
+    stmts.pruneExpiredInvites.run(Date.now());
     stmts.pruneOldPending.run(ttl_days * 86400);
     // claimed invites older than 30 days
     const claimedCutoffSec = Math.floor(Date.now() / 1000) - 30 * 86400;

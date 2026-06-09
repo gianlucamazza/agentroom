@@ -47,12 +47,16 @@ All crypto via **libsodium-wrappers** (X25519, XChaCha20-Poly1305, Ed25519, HKDF
 
 ## Rate Limits
 
-| Attack                          | Mitigation                                             |
-| ------------------------------- | ------------------------------------------------------ |
-| Challenge flood                 | 10 challenge/min per IP (token bucket)                 |
-| Brute-force HELLO               | 5 HELLO failures/min per IP → WS closed with code 1008 |
-| Queue flood (offline recipient) | 500 message cap per recipient (`MAX_PENDING_MSGS`)     |
-| Invite queue amplification      | Same cap applied to `INVITE_CLAIM` path                |
+| Attack                          | Mitigation                                                                   |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| Challenge flood                 | 10 challenge/min per IP (token bucket)                                       |
+| Brute-force HELLO               | 5 HELLO failures/min per IP → WS closed with code 1008                       |
+| Post-auth frame flood           | 60 frames/min sustained per pk (burst 120) → `RATE_LIMIT` error frame        |
+| Oversized frames (memory DoS)   | 256 KiB WS payload cap (`WS_MAX_PAYLOAD`) + per-field schema bounds          |
+| Connection exhaustion           | 500 concurrent WS cap (`MAX_CONNECTIONS`) → HTTP 503 on upgrade              |
+| Queue flood (offline recipient) | 500 message cap per recipient (`MAX_PENDING_MSGS`)                           |
+| Invite queue amplification      | Same cap applied to `INVITE_CLAIM` path                                      |
+| Invite DB flooding              | 20 unclaimed invites per pk (`MAX_INVITES_PER_PK`), expiry clamped to 7 days |
 
 ## Handler Trust Model (`--on-message`)
 

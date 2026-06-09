@@ -45,7 +45,11 @@ export function clearRateBuckets(): number {
   return n;
 }
 
-function consumeRate(key: string, capacity: number, refillPerSec: number): boolean {
+function consumeRate(
+  key: string,
+  capacity: number,
+  refillPerSec: number,
+): boolean {
   if (process.env["RATE_LIMIT_DISABLED"] === "1") return true;
   const now = Date.now();
   let bucket = rateBuckets.get(key);
@@ -72,6 +76,11 @@ export function consumeHelloFailRate(ip: string): boolean {
   return consumeRate(`hello_fail:${ip}`, 5, 5 / 60);
 }
 
+// 60 sustained frames/min per authenticated pk, burst up to 120 (post-auth flood guard)
+export function consumeFrameRate(pk: string): boolean {
+  return consumeRate(`frames:${pk}`, 120, 1);
+}
+
 // ── HMAC secret ───────────────────────────────────────────────────────────
 
 let _secret: string | null = null;
@@ -81,7 +90,7 @@ function secret(): string {
     if (!s || s.length < 32) {
       throw new Error(
         "HMAC_SECRET env var is missing or too short (min 32 chars). " +
-        "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+          "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
       );
     }
     _secret = s;
@@ -110,7 +119,9 @@ export function consumeChallenge(token: string): boolean {
 export function issueSessionToken(ed25519_pk: string): string {
   const jti = randomBytes(8).toString("base64url");
   const payload = `${jti}.${ed25519_pk}.${Date.now()}`;
-  const mac = createHmac("sha256", secret()).update(payload).digest("base64url");
+  const mac = createHmac("sha256", secret())
+    .update(payload)
+    .digest("base64url");
   return `${Buffer.from(payload).toString("base64url")}.${mac}`;
 }
 
@@ -125,7 +136,9 @@ export function verifySessionToken(
     const mac = token.slice(dotIdx + 1);
     if (!payloadB64 || !mac) return { valid: false };
     const payload = Buffer.from(payloadB64, "base64url").toString();
-    const expectedMac = createHmac("sha256", secret()).update(payload).digest("base64url");
+    const expectedMac = createHmac("sha256", secret())
+      .update(payload)
+      .digest("base64url");
     if (!timingSafeEqual(Buffer.from(mac), Buffer.from(expectedMac))) {
       return { valid: false };
     }

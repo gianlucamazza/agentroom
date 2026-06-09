@@ -3,7 +3,7 @@ import { PROTOCOL_VERSION, PROTOCOL_VERSION_V1 } from "./frames.js";
 
 const base = z.object({
   v: z.union([z.literal(PROTOCOL_VERSION), z.literal(PROTOCOL_VERSION_V1)]),
-  msg_id: z.string().uuid(),
+  msg_id: z.uuid(),
   ts: z.number().int().positive(),
 });
 
@@ -24,14 +24,14 @@ export const HelloAckSchema = base.extend({
 
 export const InvitePublishSchema = base.extend({
   type: z.literal("INVITE_PUBLISH"),
-  invite_id: z.string().uuid(),
+  invite_id: z.uuid(),
   blob: b64,
   expires_at: z.number().int().positive(),
 });
 
 export const InviteClaimSchema = base.extend({
   type: z.literal("INVITE_CLAIM"),
-  invite_id: z.string().uuid(),
+  invite_id: z.uuid(),
   from: b64,
   ciphertext: b64,
   nonce: b64,
@@ -51,7 +51,7 @@ export const RoutedSchema = base.extend({
 
 export const AckSchema = base.extend({
   type: z.literal("ACK"),
-  ref_msg_id: z.string().uuid(),
+  ref_msg_id: z.uuid(),
   status: z.enum(["delivered", "queued", "error"]),
   error: z.string().optional(),
 });

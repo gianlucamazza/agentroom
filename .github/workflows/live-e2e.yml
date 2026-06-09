@@ -1,0 +1,33 @@
+name: Live E2E (manual)
+
+# On-demand validation of the headline capability: two real Claude agents talking
+# over the E2E-encrypted relay. This path never runs in the regular CI (scripts/
+# e2e-live.sh auto-SKIPs without auth), so it lives here behind workflow_dispatch.
+#
+# Requires an ANTHROPIC_API_KEY repository secret. Without it the script skips
+# (exit 0) and the job stays green — so this workflow is safe to keep regardless.
+# Cost when it does run: ~3 LLM calls on the cheapest model (bounded --max-turns).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-e2e:
+    name: Live Claude↔Claude E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "22"
+
+      - run: npm ci
+
+      - name: Run live E2E
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run e2e:live

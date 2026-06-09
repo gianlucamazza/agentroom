@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { sodiumReady } from "@agentroom/protocol";
 
 beforeAll(async () => {

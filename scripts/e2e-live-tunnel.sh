@@ -58,14 +58,12 @@ json_field() {
 	" "$field" 2>/dev/null || true
 }
 
-# ── Skip checks (before anything else) ────────────────────────────────────────
+# ── Skip checks + provider selection (before anything else) ───────────────────
 [[ "${AGENTROOM_E2E_LIVE:-1}" == "0" ]] && skip "disabled via AGENTROOM_E2E_LIVE=0"
-command -v claude >/dev/null 2>&1 || skip "claude CLI not found"
-
-log "probing claude auth (one tiny haiku call)..."
-probe="$(timeout 60 claude -p "Reply with the single word: ok" --model haiku </dev/null 2>/dev/null)" || skip "claude probe failed — not authenticated?"
-[[ -n "$probe" ]] || skip "claude probe returned empty output"
-pass "claude CLI available and authenticated"
+# Picks an LLM provider by available credentials, sets $HANDLER (+ provider env),
+# or skips if none. See scripts/select-live-provider.sh for the priority order.
+source "$REPO_ROOT/scripts/select-live-provider.sh"
+select_live_provider
 
 # ── Prerequisites ─────────────────────────────────────────────────────────────
 command -v node >/dev/null 2>&1 || fail "node not found"
@@ -80,7 +78,7 @@ fi
 AGENTROOM_BIN="$REPO_ROOT/packages/cli/dist/index.js"
 [[ -f "$AGENTROOM_BIN" ]] || fail "CLI not found at $AGENTROOM_BIN"
 AR="node $AGENTROOM_BIN"
-HANDLER="$REPO_ROOT/scripts/claude-handler.sh"
+# $HANDLER was set by select_live_provider (above).
 [[ -x "$HANDLER" ]] || fail "handler not executable at $HANDLER"
 
 # Reuse the cloudflared already cached under the default config home (the

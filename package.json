@@ -1,6 +1,6 @@
 {
   "name": "agentroom",
-  "version": "1.14.0",
+  "version": "1.14.1",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -20,7 +20,7 @@
     "e2e:live:tunnel": "bash scripts/e2e-live-tunnel.sh"
   },
   "devDependencies": {
-    "@types/node": "^25",
+    "@types/node": "^22",
     "tsup": "^8.1.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.8"

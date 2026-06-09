@@ -68,18 +68,27 @@ Server verifies the Ed25519 signature over the raw challenge bytes.
 ```
 
 `session_token` format: `base64url(jti.ed25519_pk.timestamp_ms).hmac-sha256`.
-Valid for 1 hour. Passed as `?token=<session_token>` on reconnect to skip HELLO.
+Valid for 1 hour. Sent on reconnect (header, see below) to skip HELLO.
 
 ### Fast Reconnect
 
 ```
-GET /ws?token=<session_token>
+GET /ws
+Authorization: Bearer <session_token>
 ```
 
+The token travels in the `Authorization` header so it never lands in proxy or
+tunnel access logs. The legacy `GET /ws?token=<session_token>` query-param form
+is still accepted for pre-1.16 clients and will be removed in a future release.
+
 Server validates the HMAC and token age (tokens are stateless — there is no
-revocation table; rotation of `HMAC_SECRET` invalidates all tokens) and restores
+revocation table; rotation of `HMAC_SECRET` invalidates all tokens, and
+`HMAC_SECRET_PREVIOUS` opens a dual-key window during rotation) and restores
 the session without a challenge round-trip.
 If token invalid/expired: server sends `ERROR { code: "UNAUTH" }` → client falls back to full HELLO.
+After a token-auth open the client sends an app-level `PING`; the `PONG` (or
+the `UNAUTH` error) settles the resume immediately instead of waiting for the
+server's first keepalive.
 
 ---
 
@@ -270,7 +279,8 @@ Keys for skipped messages are stored in `skippedMessageKeys: Map<"ratchet_pk:seq
 {
   "v": 2, "type": "ERROR", "msg_id": "...", "ts": ...,
   "code": "UNAUTH" | "INVALID_CHALLENGE" | "INVALID_SIG" | "NOT_FOUND" |
-          "ALREADY_CLAIMED" | "RATE_LIMIT" | "BAD_JSON" | "BAD_FRAME" | "UNKNOWN_TYPE",
+          "ALREADY_CLAIMED" | "EXPIRED" | "INVITE_QUOTA" | "RATE_LIMIT" |
+          "BAD_JSON" | "BAD_FRAME" | "UNKNOWN_TYPE",
   "message": "<human-readable string>"
 }
 ```
@@ -299,11 +309,22 @@ v2 frames with `ratchet_pk` absent are treated as v1 (symmetric ratchet only, no
 
 ---
 
-## Rate Limits (server defaults)
+## Rate Limits & Resource Caps (server defaults)
 
-| Endpoint              | Limit  | Scope  |
-| --------------------- | ------ | ------ |
-| `GET /auth/challenge` | 10/min | per IP |
-| HELLO failures        | 5/min  | per IP |
+| What                      | Limit                           | Scope            | Env override         |
+| ------------------------- | ------------------------------- | ---------------- | -------------------- |
+| `GET /auth/challenge`     | 10/min                          | per IP           | —                    |
+| HELLO failures            | 5/min                           | per IP           | —                    |
+| Post-auth frames          | 60/min sustained, burst 120     | per pk           | —                    |
+| WS frame size             | 256 KiB (close 1009)            | per frame        | `WS_MAX_PAYLOAD`     |
+| Concurrent WS connections | 500 (HTTP 503 on upgrade)       | per server       | `MAX_CONNECTIONS`    |
+| Pending queue             | 500 messages                    | per recipient pk | `MAX_PENDING_MSGS`   |
+| Unclaimed invites         | 20 (`INVITE_QUOTA` error)       | per inviter pk   | `MAX_INVITES_PER_PK` |
+| Invite `expires_at`       | clamped to now + 7 days         | per invite       | —                    |
+| Delivery backpressure     | queue past 1 MiB bufferedAmount | per recipient ws | —                    |
 
-Override: `RATE_LIMIT_DISABLED=1` disables all limits (tests only).
+Schema field bounds: keys/sigs/nonces ≤ 512 chars, invite `blob` ≤ 16 KiB,
+`ciphertext` ≤ 192 KiB, `challenge` ≤ 256, `error`/`message` ≤ 1 KiB.
+
+Override: `RATE_LIMIT_DISABLED=1` disables the token-bucket limits (tests only);
+size caps and quotas stay active.

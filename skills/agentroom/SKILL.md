@@ -204,6 +204,7 @@ agentroom serve --server "${SERVER_URL}" --on-message '<command>' --json
 # The handler is the "brain". Examples:
 #   --on-message 'cat'                                  # echo bot
 #   --on-message 'm=$(cat); claude -p "Reply in one sentence to: $m"'
+#   --on-message ./scripts/codex-handler.sh             # OpenAI Codex CLI (`codex exec`)
 #   --on-message ./scripts/opencode-handler.sh          # reply via local OpenCode (GLM)
 #   OPENAI_API_KEY=sk-... --on-message ./scripts/openai-compatible-handler.sh   # OpenAI
 #   LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-v4-flash \

@@ -28,12 +28,12 @@ Every frame (client→server and server→client) has this base:
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `v` | `1 \| 2` | Protocol version. v1 = static DH; v2 = Double Ratchet |
-| `type` | string | Frame type (see below) |
-| `msg_id` | string | UUID-v4, unique per frame |
-| `ts` | number | Client Unix timestamp (ms) — informational only |
+| Field    | Type     | Description                                           |
+| -------- | -------- | ----------------------------------------------------- |
+| `v`      | `1 \| 2` | Protocol version. v1 = static DH; v2 = Double Ratchet |
+| `type`   | string   | Frame type (see below)                                |
+| `msg_id` | string   | UUID-v4, unique per frame                             |
+| `ts`     | number   | Client Unix timestamp (ms) — informational only       |
 
 ---
 
@@ -76,7 +76,9 @@ Valid for 1 hour. Passed as `?token=<session_token>` on reconnect to skip HELLO.
 GET /ws?token=<session_token>
 ```
 
-Server validates HMAC, checks revocation table, restores session without challenge round-trip.
+Server validates the HMAC and token age (tokens are stateless — there is no
+revocation table; rotation of `HMAC_SECRET` invalidates all tokens) and restores
+the session without a challenge round-trip.
 If token invalid/expired: server sends `ERROR { code: "UNAUTH" }` → client falls back to full HELLO.
 
 ---
@@ -151,12 +153,20 @@ Invitee                         Server (blind relay)          Inviter
 ```
 shared = X25519(our_dh_sk, their_dh_pk)
 salt   = invite_nonce (16 random bytes, agreed via invite blob)
-keyA   = HKDF-SHA256(shared, salt, "agentroom-v1-keyA", 32)
-keyB   = HKDF-SHA256(shared, salt, "agentroom-v1-keyB", 32)
+keyA   = KDF(shared, salt, "agentroom-v1-keyA", 32)
+keyB   = KDF(shared, salt, "agentroom-v1-keyB", 32)
 
 inviter:  sendKey = keyA,  recvKey = keyB
 invitee:  sendKey = keyB,  recvKey = keyA
 ```
+
+> **Actual primitives.** `KDF` is an extract-and-expand construction over keyed
+> BLAKE2b (libsodium `crypto_generichash`) — HKDF-shaped but **not** RFC 5869
+> HKDF-SHA256. The AEAD used throughout is **XSalsa20-Poly1305** (libsodium
+> `crypto_secretbox`, 24-byte nonce). Both are sound, widely deployed libsodium
+> constructions; the v1/v2 wire format is **frozen** on them. A future protocol
+> v3 may migrate to RFC 5869 HKDF and XChaCha20-Poly1305, but only behind a
+> version bump — never as an in-place swap.
 
 ---
 
@@ -167,7 +177,7 @@ invitee:  sendKey = keyB,  recvKey = keyA
   "v": 2, "type": "MSG", "msg_id": "...", "ts": ...,
   "from": "<ed25519_pk>",
   "to":   "<ed25519_pk>",
-  "ciphertext": "<base64url: XChaCha20-Poly1305 ciphertext>",
+  "ciphertext": "<base64url: XSalsa20-Poly1305 (crypto_secretbox) ciphertext>",
   "nonce":      "<base64url: 24-byte random nonce>",
   "sig":        "<base64url: sign({from,to,seq,nonce}, ed25519_sk)>",
   "seq":        <integer, monotonic per direction>,
@@ -220,7 +230,7 @@ needsSendDhStep = true                                          // our next send
 X25519 symmetry makes the send and recv derivations agree. The ratchet turns once per
 conversational turn-around, so a one-time key compromise heals after the next exchange in
 each direction. Frames carry no previous-chain-length (PN), so a prior-chain message that
-arrives *after* a rotation is not recoverable (rare with in-order transport).
+arrives _after_ a rotation is not recoverable (rare with in-order transport).
 
 ### Out-of-order delivery
 
@@ -278,12 +288,12 @@ Server sends PING every 30s. Client echoes PONG. Keepalive only.
 
 ## Version Compatibility
 
-| Field | v1 | v2 |
-|-------|----|----|
-| `v` | `1` | `2` |
-| DH ratchet (`ratchet_pk`) | absent | present on MSG |
-| Session bootstrap | static DH only | static DH + symmetric ratchet |
-| Forward secrecy | per-session key | per-message key |
+| Field                     | v1              | v2                            |
+| ------------------------- | --------------- | ----------------------------- |
+| `v`                       | `1`             | `2`                           |
+| DH ratchet (`ratchet_pk`) | absent          | present on MSG                |
+| Session bootstrap         | static DH only  | static DH + symmetric ratchet |
+| Forward secrecy           | per-session key | per-message key               |
 
 v2 frames with `ratchet_pk` absent are treated as v1 (symmetric ratchet only, no DH step).
 
@@ -291,9 +301,9 @@ v2 frames with `ratchet_pk` absent are treated as v1 (symmetric ratchet only, no
 
 ## Rate Limits (server defaults)
 
-| Endpoint | Limit | Scope |
-|----------|-------|-------|
+| Endpoint              | Limit  | Scope  |
+| --------------------- | ------ | ------ |
 | `GET /auth/challenge` | 10/min | per IP |
-| HELLO failures | 5/min | per IP |
+| HELLO failures        | 5/min  | per IP |
 
 Override: `RATE_LIMIT_DISABLED=1` disables all limits (tests only).

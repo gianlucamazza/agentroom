@@ -357,6 +357,11 @@ function handleConnection(ws: WebSocket, req: IncomingMessage) {
       store.touchAgent(result.pk);
       set("ws_connections", agents.size);
       flushPending(ws, result.pk);
+    } else {
+      // documented contract (PROTOCOL.md "Fast Reconnect"): reject the resume
+      // explicitly so the client falls back to HELLO right away instead of
+      // hanging until the first server keepalive
+      send(ws, errorFrame("UNAUTH", "invalid or expired session token"));
     }
   }
 

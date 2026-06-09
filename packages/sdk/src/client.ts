@@ -202,7 +202,20 @@ export class AgentroomClient {
       };
 
       ws.once("open", async () => {
-        if (!withHello) return; // token auth: just wait for server-side flush
+        if (!withHello) {
+          // token auth: elicit an immediate reply (PONG, or ERROR on a bad
+          // token) so the resume settles now instead of at the server's
+          // first 30s keepalive
+          ws.send(
+            JSON.stringify({
+              v: PROTOCOL_VERSION,
+              type: "PING",
+              msg_id: randomUUID(),
+              ts: Date.now(),
+            }),
+          );
+          return;
+        }
         const challengeBytes = new TextEncoder().encode(challenge!);
         const sig = await signFrame(challengeBytes, this.identity!.ed25519_sk);
         this._sendRaw({

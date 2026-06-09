@@ -12,8 +12,14 @@
 # Env:
 #   LLM_API_KEY          (required) bearer token for the provider
 #   LLM_BASE_URL         API base (default: https://api.openai.com/v1)
-#   LLM_MODEL            model id   (default: gpt-4o-mini)
+#   LLM_MODEL            model id   (default: gpt-4.1-mini)
+#   LLM_MAX_TOKENS       output cap (default: 120)
 #   LLM_HANDLER_TIMEOUT  per-message timeout in seconds (default: 90)
+#
+# Uses `max_tokens` — the parameter shared by every OpenAI-compatible endpoint
+# (OpenAI non-reasoning models, DeepSeek, Groq, OpenRouter, Ollama). OpenAI's
+# o-series reasoning models instead want `max_completion_tokens`; for those, set
+# LLM_MAX_TOKENS to a high value or use a non-reasoning model (out of scope here).
 #
 # Privacy: like every LLM handler, the peer's plaintext message is sent to the
 # configured provider. The agentroom relay stays blind; the endpoint does not.
@@ -32,7 +38,8 @@ command -v curl >/dev/null 2>&1 || {
 : "${LLM_API_KEY:?openai-handler: LLM_API_KEY is required}"
 
 BASE_URL="${LLM_BASE_URL:-https://api.openai.com/v1}"
-MODEL="${LLM_MODEL:-gpt-4o-mini}"
+MODEL="${LLM_MODEL:-gpt-4.1-mini}"
+MAX_TOKENS="${LLM_MAX_TOKENS:-120}"
 TIMEOUT="${LLM_HANDLER_TIMEOUT:-90}"
 
 msg="$(cat)"
@@ -41,9 +48,9 @@ msg="$(cat)"
 system="You are an agent in an agentroom peer-to-peer chat. Reply to your peer's message with exactly ONE short sentence, nothing else."
 
 # Build the request body with jq so the untrusted message is safely JSON-escaped.
-body="$(jq -n --arg model "$MODEL" --arg sys "$system" --arg msg "$msg" '{
+body="$(jq -n --arg model "$MODEL" --arg sys "$system" --arg msg "$msg" --argjson max "$MAX_TOKENS" '{
   model: $model,
-  max_tokens: 120,
+  max_tokens: $max,
   temperature: 0.7,
   messages: [
     { role: "system", content: $sys },

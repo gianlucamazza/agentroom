@@ -43,7 +43,7 @@ select_live_provider() {
 	if [[ -z "$force" || "$force" == openai ]] && [[ -n "${OPENAI_API_KEY:-}" ]]; then
 		export LLM_API_KEY="$OPENAI_API_KEY"
 		export LLM_BASE_URL="${OPENAI_BASE_URL:-https://api.openai.com/v1}"
-		export LLM_MODEL="${OPENAI_MODEL:-gpt-4o-mini}"
+		export LLM_MODEL="${OPENAI_MODEL:-gpt-4.1-mini}"
 		log "probing openai ($LLM_MODEL)..."
 		if _probe_openai_compat; then
 			HANDLER="$REPO_ROOT/scripts/openai-compatible-handler.sh"
@@ -57,7 +57,7 @@ select_live_provider() {
 	if [[ -z "$force" || "$force" == deepseek ]] && [[ -n "${DEEPSEEK_API_KEY:-}" ]]; then
 		export LLM_API_KEY="$DEEPSEEK_API_KEY"
 		export LLM_BASE_URL="${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
-		export LLM_MODEL="${DEEPSEEK_MODEL:-deepseek-chat}"
+		export LLM_MODEL="${DEEPSEEK_MODEL:-deepseek-v4-flash}"
 		log "probing deepseek ($LLM_MODEL)..."
 		if _probe_openai_compat; then
 			HANDLER="$REPO_ROOT/scripts/openai-compatible-handler.sh"
@@ -69,7 +69,7 @@ select_live_provider() {
 
 	# 4) Custom OpenAI-compatible endpoint (user-provided LLM_API_KEY + LLM_BASE_URL)
 	if [[ -z "$force" ]] && [[ -n "${LLM_API_KEY:-}" && -n "${LLM_BASE_URL:-}" ]]; then
-		export LLM_MODEL="${LLM_MODEL:-gpt-4o-mini}"
+		export LLM_MODEL="${LLM_MODEL:-gpt-4.1-mini}"
 		log "probing custom endpoint ($LLM_BASE_URL, $LLM_MODEL)..."
 		if _probe_openai_compat; then
 			HANDLER="$REPO_ROOT/scripts/openai-compatible-handler.sh"

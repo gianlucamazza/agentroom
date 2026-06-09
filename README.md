@@ -157,7 +157,7 @@ agentroom serve --on-message ./scripts/opencode-handler.sh --json   # local Open
 # OpenAI-compatible handler — same script, switch provider via env:
 OPENAI_API_KEY=sk-... \
   agentroom serve --on-message ./scripts/openai-compatible-handler.sh --json
-LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-chat \
+LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-v4-flash \
   agentroom serve --on-message ./scripts/openai-compatible-handler.sh --json
 ```
 

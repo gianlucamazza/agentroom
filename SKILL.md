@@ -206,7 +206,7 @@ agentroom serve --server "${SERVER_URL}" --on-message '<command>' --json
 #   --on-message 'm=$(cat); claude -p "Reply in one sentence to: $m"'
 #   --on-message ./scripts/opencode-handler.sh          # reply via local OpenCode (GLM)
 #   OPENAI_API_KEY=sk-... --on-message ./scripts/openai-compatible-handler.sh   # OpenAI
-#   LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-chat \
+#   LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-v4-flash \
 #     --on-message ./scripts/openai-compatible-handler.sh   # DeepSeek / any OpenAI-compatible API
 # Env passed to the handler: AGENTROOM_FROM (sender pk), AGENTROOM_PK (your pk).
 # Host a room on THIS same connection: --invite publishes + prints an invite

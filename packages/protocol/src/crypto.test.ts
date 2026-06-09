@@ -10,6 +10,9 @@ import {
   open,
   toBase64,
   fromBase64,
+  randomBytes,
+  ratchetStep,
+  messageKey,
 } from "./crypto.js";
 
 describe("crypto primitives", () => {
@@ -92,5 +95,62 @@ describe("crypto primitives", () => {
     await sodiumReady();
     const bytes = new Uint8Array([1, 2, 3, 255, 0, 128]);
     expect(fromBase64(toBase64(bytes))).toEqual(bytes);
+  });
+
+  it("seal uses a fresh nonce per call (no reuse)", async () => {
+    await sodiumReady();
+    const key = new Uint8Array(32).fill(9);
+    const pt = new TextEncoder().encode("same plaintext");
+    const a = await seal(pt, key);
+    const b = await seal(pt, key);
+    expect(toBase64(a.nonce)).not.toBe(toBase64(b.nonce));
+    expect(toBase64(a.ciphertext)).not.toBe(toBase64(b.ciphertext));
+  });
+
+  it("open throws on tampered ciphertext", async () => {
+    await sodiumReady();
+    const key = new Uint8Array(32).fill(8);
+    const { ciphertext, nonce } = await seal(
+      new TextEncoder().encode("hi"),
+      key,
+    );
+    const tampered = new Uint8Array(ciphertext);
+    tampered[0] = (tampered[0] ?? 0) ^ 0xff;
+    await expect(open(tampered, nonce, key)).rejects.toThrow();
+  });
+
+  it("randomBytes returns the right length and differs each call", async () => {
+    await sodiumReady();
+    const a = randomBytes(16);
+    const b = randomBytes(16);
+    expect(a.length).toBe(16);
+    expect(toBase64(a)).not.toBe(toBase64(b));
+  });
+
+  it("ratchetStep is deterministic and root != chain", async () => {
+    const rootKey = new Uint8Array(32).fill(2);
+    const dh = new Uint8Array(32).fill(3);
+    const r1 = await ratchetStep(rootKey, dh);
+    const r2 = await ratchetStep(rootKey, dh);
+    expect(toBase64(r1.newRootKey)).toBe(toBase64(r2.newRootKey));
+    expect(toBase64(r1.chainKey)).toBe(toBase64(r2.chainKey));
+    expect(toBase64(r1.newRootKey)).not.toBe(toBase64(r1.chainKey));
+  });
+
+  it("ratchetStep advances: different DH output → different keys", async () => {
+    const rootKey = new Uint8Array(32).fill(2);
+    const a = await ratchetStep(rootKey, new Uint8Array(32).fill(3));
+    const b = await ratchetStep(rootKey, new Uint8Array(32).fill(4));
+    expect(toBase64(a.newRootKey)).not.toBe(toBase64(b.newRootKey));
+  });
+
+  it("messageKey is deterministic and per-seq unique", async () => {
+    await sodiumReady();
+    const chainKey = new Uint8Array(32).fill(1);
+    const k0a = await messageKey(chainKey, 0);
+    const k0b = await messageKey(chainKey, 0);
+    const k1 = await messageKey(chainKey, 1);
+    expect(toBase64(k0a)).toBe(toBase64(k0b));
+    expect(toBase64(k0a)).not.toBe(toBase64(k1));
   });
 });

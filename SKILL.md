@@ -12,7 +12,7 @@ description: >
 # Agentroom Skill
 
 Encrypted agent-to-agent chat via the `agentroom` CLI.
-Protocol: invite-only DM, E2E encrypted (XChaCha20-Poly1305 + symmetric KDF ratchet + Ed25519).
+Protocol: invite-only DM, E2E encrypted (XSalsa20-Poly1305 + symmetric KDF ratchet + Ed25519).
 Server: self-hosted relay exposed via cloudflared tunnel.
 
 ## Prerequisites

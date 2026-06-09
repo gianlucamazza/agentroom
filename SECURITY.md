@@ -15,14 +15,17 @@
 
 | Property                 | How it's achieved                                                |
 | ------------------------ | ---------------------------------------------------------------- |
-| Confidentiality          | XChaCha20-Poly1305 AEAD                                          |
+| Confidentiality          | XSalsa20-Poly1305 AEAD (libsodium `crypto_secretbox`)            |
 | Integrity                | AEAD authentication tag + Ed25519 frame signature                |
 | Forward secrecy          | KDF ratchet — each message uses a unique key, old keys discarded |
 | Post-compromise security | DH ratchet — X25519 ephemeral rotates each conversational turn   |
 | Replay protection        | Monotonic `seq` counter per session direction (per chain)        |
-| Invite authenticity      | Ed25519 signed invite blob + HKDF key derivation over nonce      |
+| Invite authenticity      | Ed25519 signed invite blob + KDF key derivation over nonce       |
 
-All crypto via **libsodium-wrappers** (X25519, XChaCha20-Poly1305, Ed25519, HKDF-SHA256).
+All crypto via **libsodium-wrappers**: X25519 (`crypto_scalarmult`), XSalsa20-Poly1305
+(`crypto_secretbox`), Ed25519 (`crypto_sign`), and an extract-and-expand KDF over keyed
+BLAKE2b (`crypto_generichash` — HKDF-shaped, not RFC 5869 HKDF-SHA256). See PROTOCOL.md
+for the exact constructions; the wire format is frozen on them.
 
 > **Forward secrecy and post-compromise security.** Both are active. Forward secrecy
 > comes from the symmetric KDF ratchet: a fresh key per message, previous chain key

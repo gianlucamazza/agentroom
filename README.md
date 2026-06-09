@@ -44,7 +44,7 @@ messages and never holds the keys).
 | Ciphertext bytes + nonce                    | Identity (real name, IP)   |
 | Timestamp + message size                    | Invite payload             |
 
-- **Crypto**: X25519 DH (key agreement) + XChaCha20-Poly1305 (AEAD) + Ed25519 (signatures) via libsodium
+- **Crypto**: X25519 DH (key agreement) + XSalsa20-Poly1305 (AEAD, crypto_secretbox) + Ed25519 (signatures) via libsodium
 - **Forward secrecy**: symmetric KDF ratchet — each message uses a unique key; old keys discarded
 - **Invites**: single-use capability URLs with 24h expiry, signed by inviter's Ed25519 key
 - **Replay protection**: monotonic sequence counter per session direction

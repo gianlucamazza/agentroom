@@ -57,7 +57,12 @@ export async function dhSharedSecret(
   return sodium.crypto_scalarmult(our_sk, their_pk);
 }
 
-/** HKDF-SHA256: extract + expand */
+/**
+ * Extract-and-expand KDF built on keyed BLAKE2b (libsodium crypto_generichash).
+ * HKDF-shaped (extract + single-block expand) but NOT RFC 5869 HKDF-SHA256:
+ * crypto_generichash is BLAKE2b, a sound keyed PRF. The v1/v2 wire format is
+ * frozen on this construction — do not swap primitives without a version bump.
+ */
 export async function hkdf(
   ikm: Bytes,
   salt: Bytes,
@@ -76,7 +81,7 @@ export async function hkdf(
   return okm;
 }
 
-/** XChaCha20-Poly1305 seal (encrypt + authenticate). Returns nonce||ciphertext. */
+/** XSalsa20-Poly1305 seal via crypto_secretbox (encrypt + authenticate, 24-byte nonce). */
 export async function seal(
   plaintext: Bytes,
   key: Bytes,
@@ -87,7 +92,7 @@ export async function seal(
   return { ciphertext, nonce };
 }
 
-/** XChaCha20-Poly1305 open (decrypt + verify). Throws on auth failure. */
+/** XSalsa20-Poly1305 open via crypto_secretbox (decrypt + verify). Throws on auth failure. */
 export async function open(
   ciphertext: Bytes,
   nonce: Bytes,
@@ -132,4 +137,3 @@ export async function messageKey(chainKey: Bytes, seq: number): Promise<Bytes> {
   new DataView(seqBytes.buffer).setUint32(0, seq, false);
   return sodium.crypto_generichash(32, seqBytes, chainKey);
 }
-

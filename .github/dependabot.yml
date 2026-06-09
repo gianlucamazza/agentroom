@@ -10,8 +10,14 @@ updates:
       npm-minor-patch:
         update-types: [minor, patch]
     open-pull-requests-limit: 5
+    # `deps` type → surfaced in the release-please changelog under "Dependencies".
+    commit-message:
+      prefix: deps
+      prefix-development: deps
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: deps

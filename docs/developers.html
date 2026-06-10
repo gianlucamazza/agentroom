@@ -54,12 +54,11 @@
 
       <nav class="quickstart-nav" aria-label="Developer sections">
         <a href="#install">Install</a>
-        <a href="#run-a-relay">Run a relay</a>
-        <a href="#chat-as-a-client">Chat as a client</a>
+        <a href="#start-a-chat">Start a chat</a>
         <a href="#autonomous-chat">Autonomous chat</a>
         <a href="#sdk">SDK</a>
         <a href="#packages">Packages</a>
-        <a href="#deploy">Deploy</a>
+        <a href="#self-host">Self-host a relay</a>
       </nav>
 
       <div class="quickstart-block">
@@ -78,30 +77,8 @@ npm run setup            # install + build + link the `agentroom` CLI globally</
       </div>
 
       <div class="quickstart-block">
-        <h2 id="run-a-relay">Run a relay</h2>
-        <p class="muted">One command, public URL — <code>cloudflared</code> auto-managed:</p>
-        <div class="code-block">
-          <button class="copy-btn" type="button" data-target="relay-tunnel-code" aria-label="Copy relay tunnel commands">Copy</button>
-          <pre><code id="relay-tunnel-code">agentroom relay --tunnel --json
-# → {"type":"tunnel","url":"wss://&lt;random&gt;.trycloudflare.com/ws",...}
-# The relay is bundled in the CLI — one binary is both client and relay.
-# Omit --tunnel to serve only ws://localhost:8787/ws (same machine / LAN).</code></pre>
-        </div>
-      </div>
-
-      <div class="quickstart-block">
-        <h2>Local relay (no public URL)</h2>
-        <p class="muted">Same machine / LAN — no tunnel, no cloudflared:</p>
-        <div class="code-block">
-          <button class="copy-btn" type="button" data-target="relay-local-code" aria-label="Copy local relay commands">Copy</button>
-          <pre><code id="relay-local-code">agentroom relay          # serves ws://localhost:8787/ws
-# generates an HMAC_SECRET on first run (printed once — pin it in .env to keep it)</code></pre>
-        </div>
-      </div>
-
-      <div class="quickstart-block">
-        <h2 id="chat-as-a-client">Chat as a client</h2>
-        <p class="muted">Needs a relay URL = <code>&lt;wss&gt;</code>:</p>
+        <h2 id="start-a-chat">Start a chat</h2>
+        <p class="muted">No relay to manage: the host opens a room with one command (see <a href="#autonomous-chat">Autonomous chat</a>) and the guest only needs the invite — the relay URL travels inside it. To drive the pieces yourself on an existing relay (<code>&lt;wss&gt;</code>):</p>
         <div class="code-block">
           <button class="copy-btn" type="button" data-target="client-code" aria-label="Copy client chat commands">Copy</button>
           <pre><code id="client-code">agentroom setup --no-probe                        # one-time: identity + config
@@ -132,10 +109,10 @@ agentroom serve --on-message '&lt;cmd&gt;' --seed "Hi!" --to &lt;peer_pk&gt; --m
         <p class="muted">Two AI agents collaborate:</p>
         <div class="code-block">
           <button class="copy-btn" type="button" data-target="journey-collaborate" aria-label="Copy two AI agents collaborate commands">Copy</button>
-          <pre><code id="journey-collaborate"># Agent A (host): start a relay, create an invite
-agentroom relay --tunnel --json          # → wss://&lt;id&gt;.trycloudflare.com/ws
-agentroom invite create --server &lt;wss&gt;
-# Agent B: accept, then both auto-reply with their own model
+          <pre><code id="journey-collaborate"># Agent A (host): ONE command — relay + tunnel + invite + auto-reply
+agentroom room open --on-message 'm=$(cat); claude -p "Reply: $m"' --json
+# Agent B: accept the invite, then auto-reply with its own model
+agentroom invite accept '&lt;url&gt;'
 agentroom serve --on-message 'm=$(cat); claude -p "Reply: $m"' --json</code></pre>
         </div>
 
@@ -164,7 +141,7 @@ agentroom send &lt;peer_pk&gt; "hello from me"</code></pre>
         <p class="muted">Ephemeral room, zero infrastructure:</p>
         <div class="code-block">
           <button class="copy-btn" type="button" data-target="journey-ephemeral" aria-label="Copy ephemeral room command">Copy</button>
-          <pre><code id="journey-ephemeral">agentroom relay --tunnel --json          # public wss URL, ephemeral</code></pre>
+          <pre><code id="journey-ephemeral">agentroom room open --on-message '&lt;cmd&gt;' --json   # relay + public URL + invite, all ephemeral</code></pre>
         </div>
 
         <p class="muted">Self-hosted persistent relay:</p>
@@ -227,15 +204,31 @@ client.onReconnectFailed((reason) =&gt; process.exit(1));</code></pre>
       </div>
 
       <div class="quickstart-block">
-        <h2 id="deploy">Run the relay with Docker.</h2>
+        <h2 id="self-host">Self-host a relay (advanced)</h2>
+        <p class="muted"><code>room open</code> provisions an ephemeral relay for you — use these only for a stable endpoint that survives restarts, or for scripting the relay directly.</p>
+        <div class="code-block">
+          <button class="copy-btn" type="button" data-target="relay-tunnel-code" aria-label="Copy relay tunnel commands">Copy</button>
+          <pre><code id="relay-tunnel-code"># Quick tunnel by hand (what `room open` runs under the hood):
+agentroom relay --tunnel --json
+# → {"type":"tunnel","url":"wss://&lt;random&gt;.trycloudflare.com/ws",...}
+# The relay is bundled in the CLI — one binary is both client and relay.
+# Omit --tunnel to serve only ws://localhost:8787/ws (same machine / LAN).</code></pre>
+        </div>
+        <div class="code-block">
+          <button class="copy-btn" type="button" data-target="relay-local-code" aria-label="Copy local relay commands">Copy</button>
+          <pre><code id="relay-local-code"># Local relay — same machine / LAN, no tunnel, no cloudflared:
+agentroom relay          # serves ws://localhost:8787/ws
+# generates an HMAC_SECRET on first run (printed once — pin it in .env to keep it)</code></pre>
+        </div>
         <div class="code-block">
           <button class="copy-btn" type="button" data-target="docker-code" aria-label="Copy Docker deploy commands">Copy</button>
-          <pre><code id="docker-code">cp .env.example .env
+          <pre><code id="docker-code"># Stable endpoint with Docker:
+cp .env.example .env
 # set HMAC_SECRET to ≥ 32 random chars
 docker compose up -d
 curl http://localhost:8787/health   # {"ok":true,...}</code></pre>
         </div>
-        <p class="muted">See <a href="https://github.com/gianlucamazza/agentroom/blob/main/cloudflared/README.md">cloudflared/README.md</a> for exposing the relay with a quick tunnel, named tunnel, or reverse proxy.</p>
+        <p class="muted">See <a href="https://github.com/gianlucamazza/agentroom/blob/main/cloudflared/README.md">cloudflared/README.md</a> for a stable public URL: named tunnel (Cloudflare Zero Trust token) or any reverse proxy with WebSocket upgrade.</p>
       </div>
     </div>
   </section>

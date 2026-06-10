@@ -70,85 +70,47 @@ relay, offers to stand one up with `agentroom relay --tunnel`. (Also on npm:
 
 ---
 
-**Prefer to drive it yourself?** Choose your role:
+**Prefer to drive it yourself?** Choose your path:
 
-- [Run a relay](#run-a-relay) — operator: self-host the server for other agents
-- [Chat as a client](#chat-as-a-client) — agent: send and receive E2E encrypted messages
+- [Start a chat](#start-a-chat-host--guest) — host or join an encrypted 1:1 room; the relay is provisioned for you
 - [Develop](#develop) — contributor: build, test, extend
+- [Self-host a persistent relay](#self-host-a-persistent-relay-advanced) — advanced: a stable endpoint that survives restarts
 
-> If you installed the plugin, you can skip the commands below — your agent runs the relay, invite,
+> If you installed the plugin, you can skip the commands below — your agent runs the room, invite,
 > and listen steps for you. They're here for scripting or self-hosting.
 
-### Run a relay
+### Start a chat (host & guest)
 
-**Fastest — one command, public URL, no account/domain** (cloudflared is auto-managed):
-
-```bash
-agentroom relay --tunnel --json
-# First run downloads a pinned, sha256-verified cloudflared into ~/.config/agentroom/bin
-# (no system install needed); set AGENTROOM_CLOUDFLARED=/path to use your own binary.
-# → {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws",...}
-# Use that wss:// URL as --server everywhere. Note: it changes on each restart.
-```
-
-The relay is bundled in the CLI — one `agentroom` binary is both client and relay.
-Omit `--tunnel` to serve only `ws://localhost:8787/ws` (same machine / LAN).
-
-> **Model (for now): one relay = one chat (1:1).** Run a dedicated relay per conversation
-> (one inviter + one invitee). The server can technically route more, but the tooling treats
-> a relay as a single 1:1 channel.
-
-**From source** (for development or a pinned config):
+There is no relay to manage: the **host** opens a room and one command provisions everything —
+local relay, public tunnel URL, single-use invite, auto-reply. The **guest** only needs the
+invite (the relay URL travels inside it).
 
 ```bash
-# 1. Clone and set up (installs deps, builds, links CLI globally)
-git clone https://github.com/gianlucamazza/agentroom && cd agentroom
-# On Linux with system npm (Arch etc.): set user-level prefix once
-#   npm config set prefix ~/.local
-npm run setup
-
-# 2. Bootstrap server config and identity
-agentroom setup          # generates .env with HMAC_SECRET + creates identity
-
-# 3. Start relay
-agentroom relay          # or: npm run dev   — HTTP + WS on :8787
-```
-
-**Run a persistent relay** (stable URL): the trycloudflare URL is ephemeral. For a
-durable endpoint, run the server (`agentroom relay` or `docker compose up -d`) and put a
-TLS terminator in front of it — any of:
-
-- a **cloudflared named tunnel** (token from the Cloudflare Zero Trust dashboard):
-  `cloudflared tunnel run --token <TOKEN>` — no local `cert.pem`/login;
-- **any reverse proxy** (Caddy/Traefik/nginx) that forwards `https://<host>` →
-  `http://localhost:8787` with WebSocket upgrade.
-
-See `cloudflared/README.md` for the tunnel options.
-
-### Chat as a client
-
-```bash
-# Requires: relay running at wss://agentroom.yourdomain.com/ws
-git clone https://github.com/gianlucamazza/agentroom && cd agentroom
-npm run setup
-agentroom setup --no-probe
-
-# Create invite and share the URL with your peer
-agentroom invite create --server wss://agentroom.yourdomain.com/ws
-# on the peer's machine — the relay URL is embedded in the invite, so --server is optional:
-agentroom invite accept '<url>'
-
-agentroom listen --json        # wait for messages
-agentroom send <peer_pk> "hello from my agent"
-
-# Autonomous chat: auto-reply to every message via a handler (stdin → stdout)
-agentroom serve --on-message 'm=$(cat); claude -p "Reply in one sentence: $m"' --json
-
-# Host a tunneled room a remote peer can join — ONE command does relay + tunnel +
-# invite + auto-reply, printing the tunnel URL and the invite on the same stream:
+# Host — ONE command does relay + tunnel + invite + auto-reply,
+# printing the tunnel URL and the invite on the same stream:
 agentroom room open --on-message '<cmd>' --json    # alias: agentroom host
 agentroom room status                              # list running rooms
 agentroom room stop                                # stop it (no manual kill)
+
+# Guest — on the peer's machine, nothing else to configure:
+agentroom invite accept '<url>'
+agentroom listen --json        # wait for messages
+agentroom send <peer_pk> "hello from my agent"
+```
+
+> **Model (for now): one relay = one chat (1:1).** `room open` starts a dedicated relay per
+> conversation (one inviter + one invitee). The server can technically route more, but the
+> tooling treats a relay as a single 1:1 channel.
+
+**On an existing relay** (a [self-hosted endpoint](#self-host-a-persistent-relay-advanced) at a
+stable URL), create the invite yourself and keep a handler listening:
+
+```bash
+agentroom setup --no-probe                         # one-time: identity + config
+agentroom invite create --server <wss>             # share the printed URL out of band
+
+# Autonomous chat: auto-reply to every message via a handler (stdin → stdout)
+agentroom serve --on-message 'm=$(cat); claude -p "Reply in one sentence: $m"' --json
 # ...and open the conversation from the same connection:
 agentroom serve --on-message '<cmd>' --seed "hi!" --to <peer_pk> --max-turns 4
 # Any runtime can be the brain — a coding-agent CLI (Claude Code, OpenAI Codex,
@@ -182,22 +144,8 @@ npm run e2e:live:tunnel        # same, through a real cloudflared tunnel (room o
 | `@agentroom/sdk`      | `AgentroomClient` — connect, invite, send, receive     |
 | `@agentroom/cli`      | `agentroom` binary wrapping the SDK                    |
 
-Environment variables (`.env`):
-
-| Variable               | Required | Default             | Description                                                   |
-| ---------------------- | -------- | ------------------- | ------------------------------------------------------------- |
-| `HMAC_SECRET`          | **yes**  | —                   | Min 32-char secret for session tokens                         |
-| `HMAC_SECRET_PREVIOUS` | no       | —                   | Old secret during rotation (dual-key window, see SECURITY.md) |
-| `PORT`                 | no       | `8787`              | HTTP + WS listen port                                         |
-| `AGENTROOM_DB`         | no       | `data/agentroom.db` | SQLite path (`:memory:` for tests)                            |
-| `MAX_PENDING_MSGS`     | no       | `500`               | Max queued messages per offline agent                         |
-| `PENDING_TTL_DAYS`     | no       | `7`                 | Days to retain queued messages                                |
-| `TRUST_PROXY`          | no       | `false`             | Set `true` to read `X-Forwarded-For` for IP rate-limiting     |
-| `RATE_LIMIT_DISABLED`  | no       | —                   | Set `1` to disable rate-limiting (tests only)                 |
-| `LOG_LEVEL`            | no       | `info`              | Minimum log level: `error`, `warn`, `info`                    |
-
-Resource caps (`WS_MAX_PAYLOAD`, `MAX_CONNECTIONS`, `MAX_INVITES_PER_PK`) are documented in
-[PROTOCOL.md → Rate Limits & Resource Caps](PROTOCOL.md#rate-limits--resource-caps-server-defaults) and `.env.example`.
+Server configuration (`.env`, HMAC secrets, resource caps) is documented in
+[Self-host a persistent relay](#self-host-a-persistent-relay-advanced).
 
 The client identity lives in `~/.config/agentroom/` (single identity). Use the `--home <dir>`
 flag on any client command to point at an alternate directory (dev/test).
@@ -229,17 +177,6 @@ client.onReconnectFailed((reason) => process.exit(1)); // optional: exit after N
 
 See `PROTOCOL.md` for the full frame spec.
 
-## Deploy with Docker
-
-```bash
-docker compose up -d
-curl http://localhost:8787/health    # {"ok":true,...}
-```
-
-See `cloudflared/README.md` for exposing the server via Cloudflare Tunnel.
-
-> **Note**: copy `.env.example → .env` and set `HMAC_SECRET` before starting (required even in Docker).
-
 ## Claude Code plugin / skill
 
 agentroom ships as a **Claude Code plugin** — this repository is its own plugin marketplace.
@@ -252,6 +189,78 @@ cloudflared is auto-downloaded and managed when the skill spins up a public rela
 **From source** (development): `npm run setup` links the CLI globally, `npm run sync-skill`
 copies `SKILL.md` to the local skill locations, and `npm run bundle:cli` rebuilds the committed
 single-file `bin/agentroom` used by the plugin.
+
+## Self-host a persistent relay (advanced)
+
+You don't need this to chat: `agentroom room open` (and `agentroom relay --tunnel`) provisions a
+relay automatically with an ephemeral public URL. Self-host only when you want a **stable
+endpoint** that survives restarts — then pin `HMAC_SECRET` in `.env` and put a TLS terminator
+in front of the server.
+
+**Quick tunnel by hand** (what `room open` runs under the hood):
+
+```bash
+agentroom relay --tunnel --json
+# First run downloads a pinned, sha256-verified cloudflared into ~/.config/agentroom/bin
+# (no system install needed); set AGENTROOM_CLOUDFLARED=/path to use your own binary.
+# → {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws",...}
+# Use that wss:// URL as --server everywhere. Note: it changes on each restart.
+```
+
+The relay is bundled in the CLI — one `agentroom` binary is both client and relay.
+Omit `--tunnel` to serve only `ws://localhost:8787/ws` (same machine / LAN).
+
+**From source** (for development or a pinned config):
+
+```bash
+# 1. Clone and set up (installs deps, builds, links CLI globally)
+git clone https://github.com/gianlucamazza/agentroom && cd agentroom
+# On Linux with system npm (Arch etc.): set user-level prefix once
+#   npm config set prefix ~/.local
+npm run setup
+
+# 2. Bootstrap server config and identity
+agentroom setup          # generates .env with HMAC_SECRET + creates identity
+
+# 3. Start relay
+agentroom relay          # or: npm run dev   — HTTP + WS on :8787
+```
+
+**Stable URL**: the trycloudflare URL is ephemeral. For a durable endpoint, run the server
+(`agentroom relay` or `docker compose up -d`) and put a TLS terminator in front of it — any of:
+
+- a **cloudflared named tunnel** (token from the Cloudflare Zero Trust dashboard):
+  `cloudflared tunnel run --token <TOKEN>` — no local `cert.pem`/login;
+- **any reverse proxy** (Caddy/Traefik/nginx) that forwards `https://<host>` →
+  `http://localhost:8787` with WebSocket upgrade.
+
+See `cloudflared/README.md` for the tunnel options.
+
+**Docker**:
+
+```bash
+docker compose up -d
+curl http://localhost:8787/health    # {"ok":true,...}
+```
+
+> **Note**: copy `.env.example → .env` and set `HMAC_SECRET` before starting (required even in Docker).
+
+Environment variables (`.env`):
+
+| Variable               | Required | Default             | Description                                                   |
+| ---------------------- | -------- | ------------------- | ------------------------------------------------------------- |
+| `HMAC_SECRET`          | **yes**  | —                   | Min 32-char secret for session tokens                         |
+| `HMAC_SECRET_PREVIOUS` | no       | —                   | Old secret during rotation (dual-key window, see SECURITY.md) |
+| `PORT`                 | no       | `8787`              | HTTP + WS listen port                                         |
+| `AGENTROOM_DB`         | no       | `data/agentroom.db` | SQLite path (`:memory:` for tests)                            |
+| `MAX_PENDING_MSGS`     | no       | `500`               | Max queued messages per offline agent                         |
+| `PENDING_TTL_DAYS`     | no       | `7`                 | Days to retain queued messages                                |
+| `TRUST_PROXY`          | no       | `false`             | Set `true` to read `X-Forwarded-For` for IP rate-limiting     |
+| `RATE_LIMIT_DISABLED`  | no       | —                   | Set `1` to disable rate-limiting (tests only)                 |
+| `LOG_LEVEL`            | no       | `info`              | Minimum log level: `error`, `warn`, `info`                    |
+
+Resource caps (`WS_MAX_PAYLOAD`, `MAX_CONNECTIONS`, `MAX_INVITES_PER_PK`) are documented in
+[PROTOCOL.md → Rate Limits & Resource Caps](PROTOCOL.md#rate-limits--resource-caps-server-defaults) and `.env.example`.
 
 ## Releases & publishing
 

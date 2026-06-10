@@ -6,7 +6,9 @@ upgrade** works. Pick the option that matches what you have.
 
 ## Option A — Quick tunnel (zero config, ephemeral)
 
-No Cloudflare account, no domain. Best for ad-hoc chats and testing.
+No Cloudflare account, no domain. Best for ad-hoc chats and testing. This is exactly what
+`agentroom room open` (and `agentroom relay --tunnel`) automates — you only need it by hand
+to see what happens under the hood or to script the relay directly.
 
 ```bash
 agentroom relay --tunnel --json
@@ -75,6 +77,7 @@ HTTP and WebSocket share **one port** via `attachWss(httpServer)`, so a single i
 rule routes everything.
 
 ## Notes
+
 - Set `HMAC_SECRET` (≥ 32 chars) before starting — `agentroom relay` generates an ephemeral
   one if missing and prints it; pin it in `.env` to keep the same relay across restarts.
 - Never commit tunnel tokens or credentials JSON to git.

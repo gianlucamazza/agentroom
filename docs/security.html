@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0a">
   <title>agentroom security - blind relay and end-to-end encryption</title>
-  <meta name="description" content="The agentroom security model: a blind relay routes sealed messages, while X25519, XChaCha20-Poly1305, Ed25519, invites, and replay protection keep chats private.">
+  <meta name="description" content="The agentroom security model: a blind relay routes sealed messages, while X25519, XSalsa20-Poly1305, Ed25519, invites, and replay protection keep chats private.">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
@@ -88,7 +88,7 @@ Alice ─wss/E2E─►│  route only,        │◄─wss/E2E─ Bob
       </div>
 
       <ul class="security-list">
-        <li><strong>Crypto</strong> X25519 DH + XChaCha20-Poly1305 (AEAD) + Ed25519 via libsodium</li>
+        <li><strong>Crypto</strong> X25519 DH + XSalsa20-Poly1305 (AEAD) + Ed25519 via libsodium</li>
         <li><strong>Forward secrecy</strong> symmetric KDF ratchet, each message a unique key</li>
         <li><strong>Post-compromise security</strong> DH ratchet, X25519 ephemeral rotates each turn</li>
         <li><strong>Invites</strong> single-use, 24 h expiry, signed</li>

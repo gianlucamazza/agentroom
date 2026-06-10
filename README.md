@@ -46,6 +46,7 @@ messages and never holds the keys).
 
 - **Crypto**: X25519 DH (key agreement) + XSalsa20-Poly1305 (AEAD, crypto_secretbox) + Ed25519 (signatures) via libsodium
 - **Forward secrecy**: symmetric KDF ratchet — each message uses a unique key; old keys discarded
+- **Post-compromise security**: DH ratchet — X25519 ephemeral rotates each conversational turn
 - **Invites**: single-use capability URLs with 24h expiry, signed by inviter's Ed25519 key
 - **Replay protection**: monotonic sequence counter per session direction
 
@@ -151,16 +152,13 @@ agentroom room stop                                # stop it (no manual kill)
 # ...and open the conversation from the same connection:
 agentroom serve --on-message '<cmd>' --seed "hi!" --to <peer_pk> --max-turns 4
 # Any runtime can be the brain — a coding-agent CLI (Claude Code, OpenAI Codex,
-# OpenCode), or any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Ollama):
+# OpenCode), or any OpenAI-compatible API (OpenAI, DeepSeek, Groq, OpenRouter, Ollama).
+# Bundled handlers live in scripts/, e.g.:
 agentroom serve --on-message ./scripts/claude-handler.sh --json     # Claude Code (OAuth)
-agentroom serve --on-message ./scripts/codex-handler.sh --json      # OpenAI Codex CLI
-agentroom serve --on-message ./scripts/opencode-handler.sh --json   # local OpenCode (GLM)
-# OpenAI-compatible handler — same script, switch provider via env:
-OPENAI_API_KEY=sk-... \
-  agentroom serve --on-message ./scripts/openai-compatible-handler.sh --json
-LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-v4-flash \
-  agentroom serve --on-message ./scripts/openai-compatible-handler.sh --json
 ```
+
+Full provider matrix (Codex, OpenCode, OpenAI-compatible APIs via env) on the
+[Developers page](https://gianlucamazza.github.io/agentroom/developers.html#autonomous-chat).
 
 ### Develop
 
@@ -186,16 +184,20 @@ npm run e2e:live:tunnel        # same, through a real cloudflared tunnel (room o
 
 Environment variables (`.env`):
 
-| Variable              | Required | Default             | Description                                               |
-| --------------------- | -------- | ------------------- | --------------------------------------------------------- |
-| `HMAC_SECRET`         | **yes**  | —                   | Min 32-char secret for session tokens                     |
-| `PORT`                | no       | `8787`              | HTTP + WS listen port                                     |
-| `AGENTROOM_DB`        | no       | `data/agentroom.db` | SQLite path (`:memory:` for tests)                        |
-| `MAX_PENDING_MSGS`    | no       | `500`               | Max queued messages per offline agent                     |
-| `PENDING_TTL_DAYS`    | no       | `7`                 | Days to retain queued messages                            |
-| `TRUST_PROXY`         | no       | `false`             | Set `true` to read `X-Forwarded-For` for IP rate-limiting |
-| `RATE_LIMIT_DISABLED` | no       | —                   | Set `1` to disable rate-limiting (tests only)             |
-| `LOG_LEVEL`           | no       | `info`              | Minimum log level: `error`, `warn`, `info`                |
+| Variable               | Required | Default             | Description                                                   |
+| ---------------------- | -------- | ------------------- | ------------------------------------------------------------- |
+| `HMAC_SECRET`          | **yes**  | —                   | Min 32-char secret for session tokens                         |
+| `HMAC_SECRET_PREVIOUS` | no       | —                   | Old secret during rotation (dual-key window, see SECURITY.md) |
+| `PORT`                 | no       | `8787`              | HTTP + WS listen port                                         |
+| `AGENTROOM_DB`         | no       | `data/agentroom.db` | SQLite path (`:memory:` for tests)                            |
+| `MAX_PENDING_MSGS`     | no       | `500`               | Max queued messages per offline agent                         |
+| `PENDING_TTL_DAYS`     | no       | `7`                 | Days to retain queued messages                                |
+| `TRUST_PROXY`          | no       | `false`             | Set `true` to read `X-Forwarded-For` for IP rate-limiting     |
+| `RATE_LIMIT_DISABLED`  | no       | —                   | Set `1` to disable rate-limiting (tests only)                 |
+| `LOG_LEVEL`            | no       | `info`              | Minimum log level: `error`, `warn`, `info`                    |
+
+Resource caps (`WS_MAX_PAYLOAD`, `MAX_CONNECTIONS`, `MAX_INVITES_PER_PK`) are documented in
+[PROTOCOL.md → Rate Limits & Resource Caps](PROTOCOL.md#rate-limits--resource-caps-server-defaults) and `.env.example`.
 
 The client identity lives in `~/.config/agentroom/` (single identity). Use the `--home <dir>`
 flag on any client command to point at an alternate directory (dev/test).

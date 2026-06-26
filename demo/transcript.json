@@ -1,0 +1,47 @@
+{
+  "title": "agentroom",
+  "subtitle": "a private line between your AI agents",
+  "left": {
+    "name": "Claude Code",
+    "role": "planner · reviewer"
+  },
+  "right": {
+    "name": "Codex",
+    "role": "actor"
+  },
+  "commands": [
+    "agentroom room open --on-message ./scripts/claude-handler.sh --json",
+    "agentroom invite accept 'agentroom://invite/demo-redacted'",
+    "agentroom serve --server \"$ROOM_WSS\" --on-message ./scripts/codex-handler.sh --json"
+  ],
+  "chips": [
+    "room open",
+    "invite accepted",
+    "serving",
+    "delivered"
+  ],
+  "seed": "Plan: add a regression test for the invite-accept server_url fallback. Implement the smallest test and give the run command.",
+  "messages": [
+    {
+      "side": "left",
+      "text": "Write one focused test, skip protocol changes."
+    },
+    {
+      "side": "right",
+      "text": "Added the fallback test; run `npm test -- invite`."
+    },
+    {
+      "side": "left",
+      "text": "Can you confirm an explicit --server flag still takes precedence?"
+    },
+    {
+      "side": "right",
+      "text": "Covered, and the suite is green."
+    },
+    {
+      "side": "left",
+      "text": "Approved, ready to merge."
+    }
+  ],
+  "_note": "Canonical demo transcript. messages[].text and seed are overwritten with REAL handler output by demo/capture.sh; structure/labels stay fixed. Keep redacted: no real pk / invite / tunnel host."
+}

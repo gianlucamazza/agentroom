@@ -25,8 +25,12 @@
   --shadow-soft: 0 10px 28px rgba(0, 0, 0, 0.34);
   --radius: 8px;
   --radius-sm: 6px;
-  --sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --sans:
+    "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --mono:
+    "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+    monospace;
 }
 
 *,
@@ -44,8 +48,16 @@ body {
   min-width: 320px;
   color: var(--text);
   background:
-    radial-gradient(circle at 12% 4%, rgba(180, 95, 67, 0.1), transparent 32rem),
-    radial-gradient(circle at 88% 22%, rgba(180, 95, 67, 0.05), transparent 28rem),
+    radial-gradient(
+      circle at 12% 4%,
+      rgba(180, 95, 67, 0.1),
+      transparent 32rem
+    ),
+    radial-gradient(
+      circle at 88% 22%,
+      rgba(180, 95, 67, 0.05),
+      transparent 28rem
+    ),
     linear-gradient(180deg, var(--bg) 0%, #0a0a09 100%);
   font-family: var(--sans);
   font-size: 16px;
@@ -103,9 +115,21 @@ svg {
   overflow: hidden;
   color: var(--hero-text);
   background:
-    radial-gradient(circle at 22% 20%, rgba(180, 95, 67, 0.3), transparent 26rem),
-    radial-gradient(circle at 80% 14%, rgba(201, 113, 79, 0.16), transparent 26rem),
-    radial-gradient(circle at 58% 98%, rgba(180, 95, 67, 0.1), transparent 30rem),
+    radial-gradient(
+      circle at 22% 20%,
+      rgba(180, 95, 67, 0.3),
+      transparent 26rem
+    ),
+    radial-gradient(
+      circle at 80% 14%,
+      rgba(201, 113, 79, 0.16),
+      transparent 26rem
+    ),
+    radial-gradient(
+      circle at 58% 98%,
+      rgba(180, 95, 67, 0.1),
+      transparent 30rem
+    ),
     linear-gradient(135deg, #0a0a0a 0%, #0c0c0b 48%, #16130f 100%);
 }
 
@@ -366,10 +390,14 @@ h3 {
   border: 1px solid var(--hero-line);
   border-radius: 50%;
   background:
-    linear-gradient(var(--hero-line), var(--hero-line)) 50% 50% / 1px 100% no-repeat,
-    linear-gradient(90deg, var(--hero-line), var(--hero-line)) 50% 50% / 100% 1px no-repeat,
+    linear-gradient(var(--hero-line), var(--hero-line)) 50% 50% / 1px 100%
+      no-repeat,
+    linear-gradient(90deg, var(--hero-line), var(--hero-line)) 50% 50% / 100%
+      1px no-repeat,
     radial-gradient(circle, rgba(180, 95, 67, 0.22), transparent 62%);
-  box-shadow: inset 0 0 60px rgba(201, 113, 79, 0.1), 0 34px 72px rgba(0, 0, 0, 0.32);
+  box-shadow:
+    inset 0 0 60px rgba(201, 113, 79, 0.1),
+    0 34px 72px rgba(0, 0, 0, 0.32);
 }
 
 .lock-orbit::before,
@@ -404,7 +432,9 @@ h3 {
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 18px;
   background: linear-gradient(135deg, #c9714f 0%, #b45f43 100%);
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
 .lock-body::before {
@@ -655,6 +685,29 @@ tr:last-child td {
   background: var(--bg-soft);
 }
 
+/* Demo video — terminal-style framed loop. */
+.demo-section .section-heading {
+  margin-bottom: 22px;
+}
+
+.demo-frame {
+  margin: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--hero-bg);
+  box-shadow:
+    var(--shadow),
+    0 0 0 1px rgba(180, 95, 67, 0.18),
+    0 30px 80px rgba(180, 95, 67, 0.08);
+}
+
+.demo-video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .diagram,
 .code-block {
   border: 1px solid var(--border);
@@ -773,7 +826,11 @@ tr:last-child td {
   .step-card,
   .journey-card,
   .quickstart-nav a {
-    transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+    transition:
+      transform 160ms ease,
+      border-color 160ms ease,
+      box-shadow 160ms ease,
+      background-color 160ms ease;
   }
 
   .btn:hover,

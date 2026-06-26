@@ -9,7 +9,7 @@ Set Shell bash
 Set FontFamily "JetBrainsMono Nerd Font Mono"
 Set FontSize 22
 Set Width 1440
-Set Height 600
+Set Height 700
 Set Padding 40
 Set Margin 0
 Set WindowBar Colorful

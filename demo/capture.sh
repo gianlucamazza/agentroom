@@ -1,31 +1,32 @@
 #!/usr/bin/env bash
-# Capture a REAL Claude Code <-> Codex exchange and write demo/transcript.json.
+# Capture a REAL multi-runtime exchange and write demo/transcript.json.
 #
-# The demo content shown on the landing is genuine model output: this script
-# feeds the real handlers (scripts/claude-handler.sh, scripts/codex-handler.sh)
-# the running conversation and records each one-sentence reply. The blind relay
-# only routes ciphertext, so the *content* a viewer reads is exactly what the
-# handlers produce here — no relay round-trip is needed to capture it.
+# Story: colleagues on one project whose coding agents talk over agentroom. The
+# words shown on the landing are genuine coding-agent CLI output: this script
+# feeds the real handlers (scripts/{claude,codex,opencode}-handler.sh) the
+# running conversation and records each one-sentence reply. agentroom only
+# routes ciphertext, so the *content* is exactly what each agent's CLI produces.
 #
-#   bash demo/capture.sh            # uses the real `claude` and `codex` CLIs
+#   bash demo/capture.sh            # uses the real claude / codex / opencode CLIs
 #   bash demo/capture.sh --dry-run  # print turns without writing transcript.json
 #
-# Requires: `claude` (Claude Code OAuth) and `codex` (ChatGPT login / OPENAI_API_KEY).
-# After capturing, re-render with:  vhs demo/hero.tape && vhs demo/developers.tape
+# Requires: `claude` (Claude Code) and `codex` (Codex). `opencode` is best-effort
+# (needs its local server on :4096) — if it is unavailable, Carol's seeded line
+# is kept. After capturing, re-render: vhs demo/hero.tape && vhs demo/developers.tape
 #
-# Redaction: this path never touches public keys, invite URLs, or tunnel hosts,
-# so nothing sensitive can land in transcript.json. The seed/labels stay fixed;
-# only the replies are overwritten with real output.
-set -euo pipefail
+# Redaction: this path never touches public keys, invite URLs, or tunnel hosts.
+# The seed/roster/labels stay fixed; only message replies are overwritten.
+set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 CLAUDE_H="$ROOT/scripts/claude-handler.sh"
 CODEX_H="$ROOT/scripts/codex-handler.sh"
+OPENCODE_H="$ROOT/scripts/opencode-handler.sh"
 DRY=0
 [ "${1:-}" = "--dry-run" ] && DRY=1
 
-for h in "$CLAUDE_H" "$CODEX_H"; do
+for h in "$CLAUDE_H" "$CODEX_H" "$OPENCODE_H"; do
 	[ -x "$h" ] || {
 		echo "capture: missing handler $h" >&2
 		exit 1
@@ -39,45 +40,56 @@ command -v codex >/dev/null || {
 	echo "capture: 'codex' CLI required" >&2
 	exit 1
 }
+HAVE_OPENCODE=1
+command -v opencode >/dev/null || {
+	echo "capture: 'opencode' CLI not found — keeping Carol's seeded line" >&2
+	HAVE_OPENCODE=0
+}
 
-SEED="Plan: add a regression test for the invite-accept server_url fallback. Implement the smallest test and give the run command."
+# Alice's opening (fixed; mirrors transcript.json "seed").
+SEED="Bob, can your agent add the invite-fallback regression test on the auth branch?"
 
-# Conversation plan: side (left=Claude reviewer, right=Codex actor) + the brief
-# we hand that agent for its turn. Each reply is its peer's next input.
-SIDES=(left right left right left)
-# Briefs are tightly constrained (English, length, intent) so the captured
-# output stays clean and on-brand for the landing — the wording is still the
-# model's, just scoped. Curate the result in transcript.json if a reply is off.
-EN="Respond in English only, no Italian."
+# Turn plan — must match transcript.json "messages" order. Each turn is a real
+# coding-agent CLI reply; briefs are tightly scoped (English, length, intent) so
+# the captured wording stays clean and on-brand. Curate transcript.json if a
+# reply comes out off.
+EN="Respond in English only, no Italian, no preamble."
+WHO=(Bob Alice Bob Alice Carol Alice)
+HANDLERS=("$CODEX_H" "$CLAUDE_H" "$CODEX_H" "$CLAUDE_H" "$OPENCODE_H" "$CLAUDE_H")
 BRIEFS=(
-	"$EN A peer asked: '$SEED'. As the reviewer, reply in ONE sentence under 10 words telling the actor to write just one focused test, no protocol changes."
-	"$EN As the actor, reply in ONE sentence under 12 words: you added the fallback test, and give the exact command 'npm test -- invite'."
-	"$EN As the reviewer, reply in ONE sentence under 12 words asking to also confirm an explicit --server flag still takes precedence."
-	"$EN As the actor, reply in ONE sentence under 9 words: it is covered and the suite is green."
-	"$EN As the reviewer, reply in ONE sentence under 7 words approving the change for merge."
+	"$EN You are Bob's coding agent. A teammate asked: '$SEED'. Reply in ONE sentence under 12 words: you added the fallback test, and give the exact command 'npm test -- invite'."
+	"$EN You are Alice's coding agent reviewing the change. Reply in ONE sentence under 12 words asking to also confirm an explicit --server flag still takes precedence."
+	"$EN You are Bob's coding agent. Reply in ONE sentence under 8 words: it is covered and the suite is green."
+	"$EN You are Alice's coding agent. Reply in ONE sentence under 15 words asking your teammate Carol's agent to refactor the invite helper while you are all here."
+	"$EN You are Carol's coding agent. Reply in ONE sentence under 9 words: you refactored the invite helper and lint is clean."
+	"$EN You are Alice's coding agent. Reply in ONE sentence under 6 words thanking both teammates and merging."
 )
 
 REPLIES=()
-ctx="$SEED"
-for i in "${!SIDES[@]}"; do
-	side="${SIDES[$i]}"
+for i in "${!WHO[@]}"; do
+	who="${WHO[$i]}"
 	brief="${BRIEFS[$i]}"
-	if [ "$side" = left ]; then
-		who="Claude Code"
-		handler="$CLAUDE_H"
-	else
-		who="Codex"
-		handler="$CODEX_H"
+	handler="${HANDLERS[$i]}"
+	echo "── turn $((i + 1)) · $who ───────────────" >&2
+
+	if [ "$handler" = "$OPENCODE_H" ] && [ "$HAVE_OPENCODE" = 0 ]; then
+		echo "   (skipped — opencode unavailable, keeping seeded line)" >&2
+		REPLIES+=("")
+		continue
 	fi
-	echo "── turn $((i + 1)) · $who ($side) ───────────────" >&2
-	reply="$(printf '%s' "$brief" | "$handler" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
-	[ -z "$reply" ] && {
-		echo "capture: empty reply on turn $((i + 1))" >&2
+
+	reply="$(printf '%s' "$brief" | "$handler" 2>/dev/null | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')" || reply=""
+	if [ -z "$reply" ]; then
+		if [ "$handler" = "$OPENCODE_H" ]; then
+			echo "   (empty — keeping Carol's seeded line)" >&2
+			REPLIES+=("")
+			continue
+		fi
+		echo "capture: empty reply on turn $((i + 1)) ($who)" >&2
 		exit 1
-	}
+	fi
 	echo "   $reply" >&2
 	REPLIES+=("$reply")
-	ctx="$reply"
 done
 
 if [ "$DRY" = 1 ]; then
@@ -85,15 +97,16 @@ if [ "$DRY" = 1 ]; then
 	exit 0
 fi
 
-# Merge real replies into transcript.json, preserving structure/labels.
+# Merge real replies into transcript.json (empty reply → keep existing text).
 SEED="$SEED" node - "$HERE/transcript.json" "${REPLIES[@]}" <<'NODE'
 import { readFileSync, writeFileSync } from "node:fs";
 const [path, ...replies] = process.argv.slice(2);
 const t = JSON.parse(readFileSync(path, "utf8"));
 t.seed = process.env.SEED;
-t.messages = t.messages.map((m, i) => ({ ...m, text: replies[i] ?? m.text }));
+t.messages = t.messages.map((m, i) => (replies[i] ? { ...m, text: replies[i] } : m));
 writeFileSync(path, JSON.stringify(t, null, 2) + "\n");
-console.error(`capture: wrote ${replies.length} real replies to ${path}`);
+const kept = replies.filter((r) => !r).length;
+console.error(`capture: wrote ${replies.length - kept} real replies` + (kept ? `, kept ${kept} seeded` : ""));
 NODE
 
 echo "capture: done — re-render with 'vhs demo/hero.tape && vhs demo/developers.tape'" >&2

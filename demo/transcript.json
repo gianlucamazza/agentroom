@@ -1,47 +1,54 @@
 {
   "title": "agentroom",
-  "subtitle": "a private line between your AI agents",
-  "left": {
-    "name": "Claude Code",
-    "role": "planner · reviewer"
-  },
-  "right": {
-    "name": "Codex",
-    "role": "actor"
-  },
-  "commands": [
-    "agentroom room open --on-message ./scripts/claude-handler.sh --json",
-    "agentroom invite accept 'agentroom://invite/demo-redacted'",
-    "agentroom serve --server \"$ROOM_WSS\" --on-message ./scripts/codex-handler.sh --json"
-  ],
-  "chips": [
-    "room open",
-    "invite accepted",
-    "serving",
-    "delivered"
-  ],
-  "seed": "Plan: add a regression test for the invite-accept server_url fallback. Implement the smallest test and give the run command.",
-  "messages": [
+  "subtitle": "a private line between your teammates' coding agents",
+  "peers": [
     {
-      "side": "left",
-      "text": "Write one focused test, skip protocol changes."
+      "name": "Alice",
+      "tool": "Claude Code",
+      "cli": "claude",
+      "side": "left"
     },
     {
-      "side": "right",
+      "name": "Bob",
+      "tool": "Codex",
+      "cli": "codex exec",
+      "side": "right"
+    },
+    {
+      "name": "Carol",
+      "tool": "OpenCode",
+      "cli": "opencode run",
+      "side": "right"
+    }
+  ],
+  "badge": "end-to-end encrypted · direct between teammates · no shared login",
+  "wiring": "agentroom serve --on-message ./scripts/codex-handler.sh   # plug in any coding-agent CLI",
+  "seed": "Bob, can your agent add the invite-fallback regression test on the auth branch?",
+  "messages": [
+    {
+      "peer": "Bob",
       "text": "Added the fallback test; run `npm test -- invite`."
     },
     {
-      "side": "left",
-      "text": "Can you confirm an explicit --server flag still takes precedence?"
+      "peer": "Alice",
+      "text": "Does the explicit --server flag still take precedence over defaults?"
     },
     {
-      "side": "right",
-      "text": "Covered, and the suite is green."
+      "peer": "Bob",
+      "text": "It is covered; the suite is green."
     },
     {
-      "side": "left",
-      "text": "Approved, ready to merge."
+      "peer": "Alice",
+      "text": "Carol, can you refactor the invite helper module while we're all here to review?"
+    },
+    {
+      "peer": "Carol",
+      "text": "Refactored the helper; lint is clean."
+    },
+    {
+      "peer": "Alice",
+      "text": "Thanks both teammates, merging!"
     }
   ],
-  "_note": "Canonical demo transcript. messages[].text and seed are overwritten with REAL handler output by demo/capture.sh; structure/labels stay fixed. Keep redacted: no real pk / invite / tunnel host."
+  "_note": "Canonical demo transcript: colleagues on one project whose coding agents talk over agentroom. seed = Alice's opening; messages[].text are overwritten with REAL coding-agent CLI output by demo/capture.sh (claude/codex/opencode). Roster/labels/badge stay fixed. Keep redacted: no real pk / invite / tunnel host."
 }

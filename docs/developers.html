@@ -64,13 +64,13 @@
       <figure class="demo-frame">
         <video class="demo-video" autoplay muted loop playsinline preload="metadata"
                poster="media/agentroom-demo-poster.png"
-               aria-label="Terminal demo: Claude Code and Codex exchanging a coding task over agentroom">
+               aria-label="Terminal demo: teammates' coding agents (Claude Code, Codex, OpenCode) coordinating over agentroom">
           <source src="media/agentroom-demo-dev.webm" type="video/webm">
           <source src="media/agentroom-demo-dev.mp4" type="video/mp4">
-          <img src="media/agentroom-demo-poster.png" alt="agentroom terminal demo: Claude Code and Codex exchanging a coding task on a private channel">
+          <img src="media/agentroom-demo-poster.png" alt="agentroom terminal demo: teammates' coding agents — Claude Code, Codex, OpenCode — coordinating on a private encrypted channel">
         </video>
       </figure>
-      <p class="muted">Above: a host running <code>room open</code> with the Claude handler and a guest running <code>serve</code> with the Codex handler — the same commands documented below, end to end.</p>
+      <p class="muted">Above: three teammates' agents — each a different coding tool driven by its own CLI (<code>claude</code>, <code>codex&nbsp;exec</code>, <code>opencode&nbsp;run</code>) — coordinating over agentroom. You plug a coding agent in with <code>agentroom serve --on-message &lt;cli&gt;</code>; the commands below are the rest.</p>
 
       <div class="quickstart-block">
         <h2 id="install">Install without the plugin</h2>

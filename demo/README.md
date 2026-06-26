@@ -1,22 +1,25 @@
 # demo/ — landing-page demo video
 
-Branded terminal demo for the [agentroom landing](../docs/). Shows a real
-plan → act → review handoff between **Claude Code** (planner/reviewer) and
-**Codex** (actor) over a single private channel — the "mix models" use case.
+Branded terminal demo for the [agentroom landing](../docs/). Shows the product
+story: **colleagues on one project, each in a different coding tool** (Claude
+Code, Codex, OpenCode), whose agents coordinate directly over agentroom —
+encrypted, peer-to-peer, no shared login. Each agent's reply is real output from
+its own CLI (`claude`, `codex exec`, `opencode run`); agentroom is the private
+line between them, plugged in via `agentroom serve --on-message <cli>`.
 
 Rendered with [VHS](https://github.com/charmbracelet/vhs) to deterministic
 WebM/MP4 that GitHub Pages serves from `docs/media/`.
 
 ## Files
 
-| File              | Role                                                                                                                              |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `transcript.json` | Source of truth: labels, setup commands, status chips, and the conversation. Real handler output is written here by `capture.sh`. |
-| `capture.sh`      | Runs the real `claude` + `codex` handlers to fill `transcript.json` with genuine replies.                                         |
-| `playback.sh`     | Deterministic terminal player — draws `transcript.json` with absolute cursor positioning. No network.                             |
-| `_load.mjs`       | Parses `transcript.json` into bash variables for `playback.sh`.                                                                   |
-| `hero.tape`       | VHS script → `docs/media/agentroom-demo.{webm,mp4}` (1440×600, ~18s hero loop).                                                   |
-| `developers.tape` | VHS script → `docs/media/agentroom-demo-dev.{webm,mp4}` (1200×760, taller walkthrough).                                           |
+| File              | Role                                                                                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `transcript.json` | Source of truth: peer roster (name · tool · CLI), encrypted badge, the one wiring line, and the conversation. Real CLI output is written here by `capture.sh`. |
+| `capture.sh`      | Runs the real `claude` + `codex` handlers to fill `transcript.json` with genuine replies.                                                                      |
+| `playback.sh`     | Deterministic terminal player — draws `transcript.json` with absolute cursor positioning. No network.                                                          |
+| `_load.mjs`       | Parses `transcript.json` into bash variables for `playback.sh`.                                                                                                |
+| `hero.tape`       | VHS script → `docs/media/agentroom-demo.{webm,mp4}` (1440×600, ~18s hero loop).                                                                                |
+| `developers.tape` | VHS script → `docs/media/agentroom-demo-dev.{webm,mp4}` (1200×760, taller walkthrough).                                                                        |
 
 ## Regenerate
 

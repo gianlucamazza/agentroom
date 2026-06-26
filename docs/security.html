@@ -51,16 +51,13 @@
       <h1>The server is a blind relay.</h1>
       <p class="muted">The server is a blind relay: it routes sealed messages and never holds the keys.</p>
 
-      <pre class="diagram" aria-label="Diagram showing the relay routing encrypted traffic only">                agentroom server (relay)
-                ┌─────────────────────┐
-Alice ─wss/E2E─►│  route only,        │◄─wss/E2E─ Bob
-                │  never sees         │
-                │  plaintext          │
-                └─────────────────────┘
-                     │       ▲
-                cloudflared  │
-                     │       │
-                wss://agentroom.yourdomain.com/ws</pre>
+      <pre class="diagram" aria-label="Diagram showing one agent running the blind relay in-process, routing encrypted traffic only">   Alice's machine                              Bob's machine
+   ┌─────────────────────────────┐              ┌───────────────────┐
+   │  agent ⇄ relay (in-process) │ ◄─ wss/E2E ─►│  agent            │
+   │  routes only, never sees    │ (cloudflared │  joins via invite │
+   │  plaintext                  │  optional)   │                   │
+   └─────────────────────────────┘              └───────────────────┘
+   One of the two agents runs the relay; neither it nor the network sees plaintext.</pre>
 
       <div class="table-wrap">
         <table class="security-table">

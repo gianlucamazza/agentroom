@@ -18,23 +18,20 @@ never open, with no accounts and no SaaS in the middle. A private 1:1 back-chann
 - **Two owners, one private channel** — your agent and a teammate's talk directly, without sharing a login or platform.
 - **Mix models — Claude ↔ Codex ↔ OpenCode** — different runtimes on the same encrypted channel, each using its own model.
 - **A 1:1 room on demand** — spin up an encrypted room in seconds, no account or domain, tear it down when done.
-- **You stay in control** — invite-only, single-use links; one relay = one chat (for now); you host the relay (the server only ever sees sealed ciphertext).
+- **You stay in control** — invite-only, single-use links; one relay = one chat (for now); one of you opens the relay in-process (it only ever sees sealed ciphertext).
 
 ```
-                    agentroom server (relay)
-                    ┌─────────────────────┐
-Alice ──wss/E2E──►  │  route only,        │  ◄──wss/E2E── Bob
-                    │  never sees         │
-                    │  plaintext          │
-                    └─────────────────────┘
-                         │       ▲
-                    cloudflared  │
-                         │       │
-                    wss://agentroom.yourdomain.com/ws
+   Alice's machine                              Bob's machine
+   ┌─────────────────────────────┐              ┌───────────────────┐
+   │  agent ⇄ relay (in-process) │ ◄─ wss/E2E ─►│  agent            │
+   │  sees only ciphertext       │ (cloudflared │  joins via invite │
+   │                             │  optional)   │                   │
+   └─────────────────────────────┘              └───────────────────┘
+   One of the two agents runs the relay; neither it nor the network sees plaintext.
 ```
 
-**Protocol**: invite-only DM, E2E encrypted — the server is a blind relay (it routes sealed
-messages and never holds the keys).
+**Protocol**: invite-only DM, E2E encrypted — the relay is blind (it routes sealed
+messages and never holds the keys). There is no third party: one of the two agents runs it.
 
 ## Security model
 
@@ -65,7 +62,7 @@ one at a time:
 
 Then just tell your agent: "create an agentroom invite", "start a relay", "listen for messages" — it
 runs the rest. The skill runs `agentroom setup --json` to bootstrap your identity and, if you have no
-relay, offers to stand one up with `agentroom relay --tunnel`. (Also on npm:
+relay, offers to start one with `agentroom relay --tunnel`. (Also on npm:
 `npm install -g @gianlucamazza/agentroom`.)
 
 ---
@@ -74,10 +71,9 @@ relay, offers to stand one up with `agentroom relay --tunnel`. (Also on npm:
 
 - [Start a chat](#start-a-chat-host--guest) — host or join an encrypted 1:1 room; the relay is provisioned for you
 - [Develop](#develop) — contributor: build, test, extend
-- [Self-host a persistent relay](#self-host-a-persistent-relay-advanced) — advanced: a stable endpoint that survives restarts
 
 > If you installed the plugin, you can skip the commands below — your agent runs the room, invite,
-> and listen steps for you. They're here for scripting or self-hosting.
+> and listen steps for you. They're here for scripting or running the relay yourself.
 
 ### Start a chat (host & guest)
 
@@ -102,8 +98,9 @@ agentroom send <peer_pk> "hello from my agent"
 > conversation (one inviter + one invitee). The server can technically route more, but the
 > tooling treats a relay as a single 1:1 channel.
 
-**On an existing relay** (a [self-hosted endpoint](#self-host-a-persistent-relay-advanced) at a
-stable URL), create the invite yourself and keep a handler listening:
+**If the relay is already running** (you kept it up across restarts — see
+[Keep the relay running](#keep-the-relay-running-advanced)), create the invite yourself and keep
+a handler listening:
 
 ```bash
 agentroom setup --no-probe                         # one-time: identity + config
@@ -144,8 +141,8 @@ npm run e2e:live:tunnel        # same, through a real cloudflared tunnel (room o
 | `@agentroom/sdk`      | `AgentroomClient` — connect, invite, send, receive     |
 | `@agentroom/cli`      | `agentroom` binary wrapping the SDK                    |
 
-Server configuration (`.env`, HMAC secrets, resource caps) is documented in
-[Self-host a persistent relay](#self-host-a-persistent-relay-advanced).
+Relay configuration (`.env`, HMAC secret, resource caps) is documented in
+[Keep the relay running](#keep-the-relay-running-advanced).
 
 The client identity lives in `~/.config/agentroom/` (single identity). Use the `--home <dir>`
 flag on any client command to point at an alternate directory (dev/test).
@@ -165,7 +162,7 @@ Server logs are structured NDJSON (`{"ts":...,"level":"info","event":"hello.succ
 import { AgentroomClient } from "@agentroom/sdk";
 
 const client = new AgentroomClient();
-await client.connect({ serverUrl: "wss://agentroom.yourdomain.com/ws" });
+await client.connect({ serverUrl: "wss://<relay-url>/ws" });
 
 client.onMessage((from, text) => console.log(`${from}: ${text}`));
 
@@ -190,62 +187,27 @@ cloudflared is auto-downloaded and managed when the skill spins up a public rela
 copies `SKILL.md` to the local skill locations, and `npm run bundle:cli` rebuilds the committed
 single-file `bin/agentroom` used by the plugin.
 
-## Self-host a persistent relay (advanced)
+## Keep the relay running (advanced)
 
-You don't need this to chat: `agentroom room open` (and `agentroom relay --tunnel`) provisions a
-relay automatically with an ephemeral public URL. Self-host only when you want a **stable
-endpoint** that survives restarts — then pin `HMAC_SECRET` in `.env` and put a TLS terminator
-in front of the server.
-
-**Quick tunnel by hand** (what `room open` runs under the hood):
+You don't need this to chat: `agentroom room open` (and `agentroom relay --tunnel`) start the
+relay for you with an ephemeral public URL. This is only for when you want the _same_ relay to
+survive restarts — pin `HMAC_SECRET` in `.env` so existing sessions stay valid, then keep the
+process up.
 
 ```bash
-agentroom relay --tunnel --json
-# First run downloads a pinned, sha256-verified cloudflared into ~/.config/agentroom/bin
-# (no system install needed); set AGENTROOM_CLOUDFLARED=/path to use your own binary.
-# → {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws",...}
-# Use that wss:// URL as --server everywhere. Note: it changes on each restart.
-```
-
-The relay is bundled in the CLI — one `agentroom` binary is both client and relay.
-Omit `--tunnel` to serve only `ws://localhost:8787/ws` (same machine / LAN).
-
-**From source** (for development or a pinned config):
-
-```bash
-# 1. Clone and set up (installs deps, builds, links CLI globally)
-git clone https://github.com/gianlucamazza/agentroom && cd agentroom
-# On Linux with system npm (Arch etc.): set user-level prefix once
-#   npm config set prefix ~/.local
-npm run setup
-
-# 2. Bootstrap server config and identity
 agentroom setup          # generates .env with HMAC_SECRET + creates identity
-
-# 3. Start relay
-agentroom relay          # or: npm run dev   — HTTP + WS on :8787
+agentroom relay          # HTTP + WS on :8787  (add --tunnel for an ephemeral public URL)
+# or run it in a container:  docker compose up -d   (set HMAC_SECRET in .env first)
 ```
 
-**Stable URL**: the trycloudflare URL is ephemeral. For a durable endpoint, run the server
-(`agentroom relay` or `docker compose up -d`) and put a TLS terminator in front of it — any of:
+The relay is bundled in the CLI — one `agentroom` binary is both client and relay. Omit
+`--tunnel` to serve only `ws://localhost:8787/ws` (same machine / LAN). To give it a public URL
+that keeps the same address across restarts (named tunnel or any reverse proxy), see
+[`cloudflared/README.md`](cloudflared/README.md).
 
-- a **cloudflared named tunnel** (token from the Cloudflare Zero Trust dashboard):
-  `cloudflared tunnel run --token <TOKEN>` — no local `cert.pem`/login;
-- **any reverse proxy** (Caddy/Traefik/nginx) that forwards `https://<host>` →
-  `http://localhost:8787` with WebSocket upgrade.
+### Relay configuration (reference)
 
-See `cloudflared/README.md` for the tunnel options.
-
-**Docker**:
-
-```bash
-docker compose up -d
-curl http://localhost:8787/health    # {"ok":true,...}
-```
-
-> **Note**: copy `.env.example → .env` and set `HMAC_SECRET` before starting (required even in Docker).
-
-Environment variables (`.env`):
+The relay reads these from `.env`:
 
 | Variable               | Required | Default             | Description                                                   |
 | ---------------------- | -------- | ------------------- | ------------------------------------------------------------- |

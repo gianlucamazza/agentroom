@@ -50,7 +50,8 @@ export async function startRelay(opts: StartRelayOpts): Promise<RelayHandle> {
   const { port, db, useTunnel, emit, human } = opts;
 
   // HMAC_SECRET: explicit/env wins; otherwise generate an ephemeral one and
-  // surface it once so the operator can pin it (via .env) for a stable relay.
+  // surface it once so the peer running the relay can pin it (via .env) and
+  // reuse the same secret across restarts.
   let hmac = opts.hmac ?? process.env["HMAC_SECRET"];
   let hmacGenerated = false;
   if (!hmac) {
@@ -79,7 +80,10 @@ export async function startRelay(opts: StartRelayOpts): Promise<RelayHandle> {
         });
       }
     }
-    if (pending.size === 0) { process.exit(code); return; }
+    if (pending.size === 0) {
+      process.exit(code);
+      return;
+    }
 
     for (const child of pending) child.kill("SIGTERM");
     const force = setTimeout(() => {
@@ -90,14 +94,24 @@ export async function startRelay(opts: StartRelayOpts): Promise<RelayHandle> {
   };
 
   // ── Start the server ──────────────────────────────────────────────────────
-  const env: NodeJS.ProcessEnv = { ...process.env, HMAC_SECRET: hmac, PORT: String(port) };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    HMAC_SECRET: hmac,
+    PORT: String(port),
+  };
   if (db) env["AGENTROOM_DB"] = db;
   // Re-fork this same executable with the internal `__relay-server` command so
   // the bundled single-file CLI runs a relay with no separate @agentroom/server
   // to resolve. The server's NDJSON logs go to stderr to keep our stdout clean.
   const selfEntry = process.argv[1];
-  if (!selfEntry) { console.error("cannot determine CLI entry to launch the relay server"); process.exit(EXIT_ERROR); }
-  srv = fork(selfEntry, ["__relay-server"], { env, stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  if (!selfEntry) {
+    console.error("cannot determine CLI entry to launch the relay server");
+    process.exit(EXIT_ERROR);
+  }
+  srv = fork(selfEntry, ["__relay-server"], {
+    env,
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
+  });
   srv.stdout?.pipe(process.stderr);
   srv.stderr?.pipe(process.stderr);
   srv.on("exit", (code) => {
@@ -114,8 +128,13 @@ export async function startRelay(opts: StartRelayOpts): Promise<RelayHandle> {
     await sleep(200);
     try {
       const r = await fetch(`${base}/health`);
-      if (r.ok) { healthy = true; break; }
-    } catch { /* not up yet */ }
+      if (r.ok) {
+        healthy = true;
+        break;
+      }
+    } catch {
+      /* not up yet */
+    }
   }
   if (!healthy) {
     human("server did not become healthy in time");
@@ -125,10 +144,14 @@ export async function startRelay(opts: StartRelayOpts): Promise<RelayHandle> {
 
   if (hmacGenerated) {
     emit({ type: "hmac_generated", hmac_secret: hmac });
-    human(`generated ephemeral HMAC_SECRET (pin it in .env for a stable relay): ${hmac}`);
+    human(
+      `generated ephemeral HMAC_SECRET (pin it in .env to reuse it across restarts): ${hmac}`,
+    );
   }
   emit({ type: "listening", port, local_url: `ws://localhost:${port}/ws` });
-  human(`relay listening on ws://localhost:${port}/ws  (health: ${base}/health)`);
+  human(
+    `relay listening on ws://localhost:${port}/ws  (health: ${base}/health)`,
+  );
 
   const handle: RelayHandle = {
     port,
@@ -158,9 +181,10 @@ export async function startRelay(opts: StartRelayOpts): Promise<RelayHandle> {
       stdio: ["ignore", "pipe", "pipe"],
     });
     cf.on("error", (e) => {
-      const msg = (e as NodeJS.ErrnoException).code === "ENOENT"
-        ? `cloudflared binary not runnable at ${cfBin}`
-        : String(e);
+      const msg =
+        (e as NodeJS.ErrnoException).code === "ENOENT"
+          ? `cloudflared binary not runnable at ${cfBin}`
+          : String(e);
       emit({ type: "tunnel_error", error: msg });
       human(msg);
       shutdown(EXIT_ERROR);
@@ -175,7 +199,8 @@ export async function startRelay(opts: StartRelayOpts): Promise<RelayHandle> {
         const m = s.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
         if (m) url = m[0];
       }
-      if (/Registered tunnel connection|Connection .* registered/i.test(s)) registered = true;
+      if (/Registered tunnel connection|Connection .* registered/i.test(s))
+        registered = true;
     };
     cf.stdout?.on("data", onLog);
     cf.stderr?.on("data", onLog);
@@ -195,15 +220,22 @@ export async function startRelay(opts: StartRelayOpts): Promise<RelayHandle> {
       await flushDns();
       try {
         const r = await fetch(`${httpsHost}/health`);
-        if (r.ok) { reachable = true; break; }
-      } catch { /* propagating */ }
+        if (r.ok) {
+          reachable = true;
+          break;
+        }
+      } catch {
+        /* propagating */
+      }
       await sleep(500);
     }
 
     emit({ type: "tunnel", url: wss, https: httpsHost, reachable });
-    human(reachable
-      ? `public relay ready:  ${wss}`
-      : `tunnel URL (not yet confirmed reachable, give DNS a few s):  ${wss}`);
+    human(
+      reachable
+        ? `public relay ready:  ${wss}`
+        : `tunnel URL (not yet confirmed reachable, give DNS a few s):  ${wss}`,
+    );
     handle.tunnel = { wss, https: httpsHost, reachable };
   }
 

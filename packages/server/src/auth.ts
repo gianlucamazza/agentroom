@@ -85,7 +85,7 @@ export function consumeFrameRate(pk: string): boolean {
 // Read on every use (not cached) so a restart-free test can rotate, and so
 // HMAC_SECRET_PREVIOUS can provide a dual-key verification window: new tokens
 // are always signed with HMAC_SECRET, but tokens minted under the previous
-// secret keep verifying until the operator unsets HMAC_SECRET_PREVIOUS.
+// secret keep verifying until HMAC_SECRET_PREVIOUS is unset.
 
 function secret(): string {
   const s = process.env["HMAC_SECRET"];

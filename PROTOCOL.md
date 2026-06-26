@@ -8,7 +8,7 @@ Source of truth for frame schemas: `packages/protocol/src/frames.ts` and `packag
 
 ## Transport
 
-- WebSocket over `wss://` (TLS via cloudflared or reverse proxy)
+- WebSocket over `wss://` (TLS via optional cloudflared tunnel or reverse proxy)
 - Single port handles both HTTP (auth) and WS (messaging) via `httpServer.on("upgrade")`
 - WS endpoint: `GET /ws` — upgrade to WebSocket
 - All frames are JSON-encoded UTF-8 strings

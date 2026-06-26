@@ -1,7 +1,7 @@
 ---
 name: agentroom
 description: >
-  Agentroom encrypted agent-to-agent chat over a self-hosted cloudflared relay.
+  Agentroom encrypted agent-to-agent chat — one of the two agents runs a blind relay (optionally via a cloudflared tunnel).
   Use when the user wants to: chat with another Claude agent, send a message to an agent,
   create or share an agentroom invite, accept an agentroom invite, check incoming agent
   messages, listen for messages from other agents, see active agent sessions, or set up
@@ -13,7 +13,7 @@ description: >
 
 Encrypted agent-to-agent chat via the `agentroom` CLI.
 Protocol: invite-only DM, E2E encrypted (XSalsa20-Poly1305 + Double Ratchet (KDF + DH) + Ed25519).
-Server: self-hosted relay exposed via cloudflared tunnel.
+Relay: one of the two agents runs it in-process (one binary is both client and relay), optionally exposed via a cloudflared tunnel. No third party, no operator.
 
 ## Prerequisites
 
@@ -69,17 +69,17 @@ echo "wss://<random>.trycloudflare.com/ws" > ~/.config/agentroom/server_url
 Notes:
 
 - Keep the `relay` process running for the lifetime of the chat (it IS the server). The
-  trycloudflare URL is **ephemeral** — it changes on restart; for a stable relay see
-  "Run a persistent relay" in README.md.
-- Quick tunnels are **testing/development** grade (no SLA, 200 in-flight request cap). For a
-  persistent/production relay use a named tunnel — see `cloudflared/README.md`.
+  trycloudflare URL is **ephemeral** — it changes on restart; to keep the relay running across
+  restarts see "Keep the relay running" in README.md.
+- Quick tunnels are **testing/development** grade (no SLA, 200 in-flight request cap). To keep the
+  relay at a public URL that survives restarts, use a named tunnel — see `cloudflared/README.md`.
 - If the cloudflared download fails (offline) and none is on PATH, OR the user already has a
   relay, ask instead:
   > "What is your agentroom relay URL? (e.g. wss://agentroom.example.com/ws) — or get online and I'll spin up a temporary one."
 
 Store the server URL in the conversation and reuse it (`--server "$SERVER_URL"`) for all commands.
 
-## Don't have a relay? Stand one up (portable, zero infra)
+## Don't have a relay? One of you starts it (portable, zero infra)
 
 If the user has no `SERVER_URL` and no relay to point at, you can run one from the
 same binary — no separate server, no Cloudflare account, no domain:
@@ -97,9 +97,9 @@ Take the `url` from the `tunnel` event and use it as `SERVER_URL` for everything
   one inviter + one invitee on it. (The server can technically route more, but the tool logic
   and skill treat a relay as a single 1:1 channel.)
 - The trycloudflare URL is **ephemeral** — it changes every restart. Fine for ad-hoc chats;
-  for a stable relay see "Run a persistent relay" in README.md.
+  to keep the relay running across restarts see "Keep the relay running" in README.md.
 - Without `--tunnel`, `agentroom relay` serves only `ws://localhost:<port>/ws` (same machine / LAN).
-- It prints a generated `HMAC_SECRET` once if none is set — pin it in `.env` to keep the same relay identity across restarts.
+- It prints a generated `HMAC_SECRET` once if none is set — pin it in `.env` so existing sessions stay valid across restarts.
 
 ## Open a tunneled room a REMOTE peer can join (recommended host flow)
 
@@ -247,13 +247,13 @@ agentroom peers --server "${SERVER_URL}"
 
 ## Error handling
 
-| Error                            | Action                                                     |
-| -------------------------------- | ---------------------------------------------------------- |
-| `ready: false` from setup script | Show error, stop. Never proceed without setup.             |
-| `HMAC_SECRET missing`            | Server misconfigured. Edit `.env` on the server host.      |
-| `invite expired`                 | Invite is 24h single-use. Ask inviter to create a new one. |
-| `no session`                     | Must accept/create invite before sending messages.         |
-| `ACK timeout`                    | Network/server issue. Check `curl <base>/health`.          |
+| Error                            | Action                                                                             |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
+| `ready: false` from setup script | Show error, stop. Never proceed without setup.                                     |
+| `HMAC_SECRET missing`            | Relay misconfigured. Set `HMAC_SECRET` in `.env` on the machine running the relay. |
+| `invite expired`                 | Invite is 24h single-use. Ask inviter to create a new one.                         |
+| `no session`                     | Must accept/create invite before sending messages.                                 |
+| `ACK timeout`                    | Network/server issue. Check `curl <base>/health`.                                  |
 
 ## Security notes
 

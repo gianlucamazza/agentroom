@@ -19022,7 +19022,7 @@ var init_dist = __esm({
   }
 });
 
-// packages/server/dist/chunk-ZF7XF7ZA.js
+// packages/server/dist/chunk-IRL77W62.js
 import { createServer } from "http";
 import { readFileSync as readFileSync6, existsSync as existsSync8 } from "fs";
 import { randomUUID as randomUUID3 } from "crypto";
@@ -19616,8 +19616,8 @@ Copy .env.example \u2192 .env and fill in the values.`
   return httpServer;
 }
 var DB_PATH, db, stmts, store, CHALLENGE_TTL_MS, challenges, BUCKET_IDLE_TTL_MS, challengeCleanupTimer, rateBuckets, counters, LEVELS, agents, wsPkMap, pingIntervals, pruneTimer, _wss, BACKPRESSURE_BYTES, startedAt, TRUST_PROXY;
-var init_chunk_ZF7XF7ZA = __esm({
-  "packages/server/dist/chunk-ZF7XF7ZA.js"() {
+var init_chunk_IRL77W62 = __esm({
+  "packages/server/dist/chunk-IRL77W62.js"() {
     "use strict";
     init_wrapper();
     init_dist();
@@ -19801,7 +19801,7 @@ __export(server_exports, {
 var init_server = __esm({
   "packages/server/dist/server.js"() {
     "use strict";
-    init_chunk_ZF7XF7ZA();
+    init_chunk_IRL77W62();
   }
 });
 
@@ -21349,14 +21349,21 @@ async function startRelay(opts) {
     }, 6e3);
     force.unref?.();
   };
-  const env = { ...process.env, HMAC_SECRET: hmac, PORT: String(port) };
+  const env = {
+    ...process.env,
+    HMAC_SECRET: hmac,
+    PORT: String(port)
+  };
   if (db2) env["AGENTROOM_DB"] = db2;
   const selfEntry = process.argv[1];
   if (!selfEntry) {
     console.error("cannot determine CLI entry to launch the relay server");
     process.exit(EXIT_ERROR);
   }
-  srv = fork(selfEntry, ["__relay-server"], { env, stdio: ["ignore", "pipe", "pipe", "ipc"] });
+  srv = fork(selfEntry, ["__relay-server"], {
+    env,
+    stdio: ["ignore", "pipe", "pipe", "ipc"]
+  });
   srv.stdout?.pipe(process.stderr);
   srv.stderr?.pipe(process.stderr);
   srv.on("exit", (code) => {
@@ -21386,10 +21393,14 @@ async function startRelay(opts) {
   }
   if (hmacGenerated) {
     emit({ type: "hmac_generated", hmac_secret: hmac });
-    human(`generated ephemeral HMAC_SECRET (pin it in .env for a stable relay): ${hmac}`);
+    human(
+      `generated ephemeral HMAC_SECRET (pin it in .env to reuse it across restarts): ${hmac}`
+    );
   }
   emit({ type: "listening", port, local_url: `ws://localhost:${port}/ws` });
-  human(`relay listening on ws://localhost:${port}/ws  (health: ${base2}/health)`);
+  human(
+    `relay listening on ws://localhost:${port}/ws  (health: ${base2}/health)`
+  );
   const handle = {
     port,
     base: base2,
@@ -21429,7 +21440,8 @@ async function startRelay(opts) {
         const m = s.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
         if (m) url2 = m[0];
       }
-      if (/Registered tunnel connection|Connection .* registered/i.test(s)) registered = true;
+      if (/Registered tunnel connection|Connection .* registered/i.test(s))
+        registered = true;
     };
     cf.stdout?.on("data", onLog);
     cf.stderr?.on("data", onLog);
@@ -21455,7 +21467,9 @@ async function startRelay(opts) {
       await sleep(500);
     }
     emit({ type: "tunnel", url: wss, https: httpsHost, reachable });
-    human(reachable ? `public relay ready:  ${wss}` : `tunnel URL (not yet confirmed reachable, give DNS a few s):  ${wss}`);
+    human(
+      reachable ? `public relay ready:  ${wss}` : `tunnel URL (not yet confirmed reachable, give DNS a few s):  ${wss}`
+    );
     handle.tunnel = { wss, https: httpsHost, reachable };
   }
   return handle;

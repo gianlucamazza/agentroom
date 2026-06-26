@@ -4,18 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0a">
-  <title>agentroom developers - CLI, SDK, packages, and deploy</title>
-  <meta name="description" content="Developer commands for agentroom: run a relay, create invites, chat as a client, automate replies, use the SDK, and deploy the relay.">
+  <title>agentroom developers - CLI, SDK, packages, and the relay</title>
+  <meta name="description" content="Developer commands for agentroom: run a relay, create invites, chat as a client, automate replies, and use the SDK.">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
-  <meta property="og:title" content="agentroom developers - CLI, SDK, packages, and deploy">
-  <meta property="og:description" content="Commands, SDK, packages, and deployment notes for scripting, self-hosting, or driving the agentroom CLI directly.">
+  <meta property="og:title" content="agentroom developers - CLI, SDK, packages, and the relay">
+  <meta property="og:description" content="Commands, SDK, packages, and setup notes for scripting, embedding, or driving the agentroom CLI directly.">
   <meta property="og:image" content="og-image.svg">
   <meta property="og:url" content="https://gianlucamazza.github.io/agentroom/developers.html">
   <meta property="twitter:card" content="summary_large_image">
   <meta property="twitter:title" content="agentroom developers">
-  <meta property="twitter:description" content="Commands, SDK, packages, and deploy for agentroom.">
+  <meta property="twitter:description" content="Commands, SDK, packages, and the relay for agentroom.">
   <meta property="twitter:image" content="og-image.svg">
 
   <link rel="canonical" href="https://gianlucamazza.github.io/agentroom/developers.html">
@@ -49,8 +49,8 @@
   <section id="for-developers" class="section">
     <div class="container">
       <p class="section-kicker">For developers</p>
-      <h1>Commands, SDK, packages, and deploy.</h1>
-      <p class="muted">Installed the <a href="index.html#get-started">plugin</a>? These are the commands it runs under the hood — here for scripting, self-hosting, or driving the CLI directly.</p>
+      <h1>Commands, SDK, packages, and the relay.</h1>
+      <p class="muted">Installed the <a href="index.html#get-started">plugin</a>? These are the commands it runs under the hood — here for scripting, embedding, or driving the CLI directly.</p>
 
       <nav class="quickstart-nav" aria-label="Developer sections">
         <a href="#install">Install</a>
@@ -58,7 +58,7 @@
         <a href="#autonomous-chat">Autonomous chat</a>
         <a href="#sdk">SDK</a>
         <a href="#packages">Packages</a>
-        <a href="#self-host">Self-host a relay</a>
+        <a href="#self-host">Keep the relay running</a>
       </nav>
 
       <div class="quickstart-block">
@@ -144,11 +144,11 @@ agentroom send &lt;peer_pk&gt; "hello from me"</code></pre>
           <pre><code id="journey-ephemeral">agentroom room open --on-message '&lt;cmd&gt;' --json   # relay + public URL + invite, all ephemeral</code></pre>
         </div>
 
-        <p class="muted">Self-hosted persistent relay:</p>
+        <p class="muted">Keep the relay running across restarts:</p>
         <div class="code-block">
-          <button class="copy-btn" type="button" data-target="journey-self-hosted" aria-label="Copy self-hosted persistent relay commands">Copy</button>
-          <pre><code id="journey-self-hosted">docker compose up -d                      # relay on :8787
-# expose with a cloudflared named tunnel or any reverse proxy (see docs)</code></pre>
+          <button class="copy-btn" type="button" data-target="journey-self-hosted" aria-label="Copy keep-the-relay-running commands">Copy</button>
+          <pre><code id="journey-self-hosted">agentroom relay --tunnel --json           # one of you keeps this up (pin HMAC_SECRET in .env)
+# or run it in a container:  docker compose up -d</code></pre>
         </div>
       </div>
 
@@ -159,7 +159,7 @@ agentroom send &lt;peer_pk&gt; "hello from me"</code></pre>
           <pre><code id="sdk-code">import { AgentroomClient } from "@agentroom/sdk";
 
 const client = new AgentroomClient();
-await client.connect({ serverUrl: "wss://agentroom.yourdomain.com/ws" });
+await client.connect({ serverUrl: "wss://&lt;relay-url&gt;/ws" });
 
 client.onMessage((from, text) =&gt; console.log(`${from}: ${text}`));
 
@@ -204,8 +204,8 @@ client.onReconnectFailed((reason) =&gt; process.exit(1));</code></pre>
       </div>
 
       <div class="quickstart-block">
-        <h2 id="self-host">Self-host a relay (advanced)</h2>
-        <p class="muted"><code>room open</code> provisions an ephemeral relay for you — use these only for a stable endpoint that survives restarts, or for scripting the relay directly.</p>
+        <h2 id="self-host">Keep the relay running (advanced)</h2>
+        <p class="muted"><code>room open</code> starts the relay for you — use these only when you want the relay to persist across restarts, or to script the relay directly. It's still one of the two agents running it, not a separate service.</p>
         <div class="code-block">
           <button class="copy-btn" type="button" data-target="relay-tunnel-code" aria-label="Copy relay tunnel commands">Copy</button>
           <pre><code id="relay-tunnel-code"># Quick tunnel by hand (what `room open` runs under the hood):
@@ -222,13 +222,13 @@ agentroom relay          # serves ws://localhost:8787/ws
         </div>
         <div class="code-block">
           <button class="copy-btn" type="button" data-target="docker-code" aria-label="Copy Docker deploy commands">Copy</button>
-          <pre><code id="docker-code"># Stable endpoint with Docker:
+          <pre><code id="docker-code"># Run the relay in a container (persists across restarts):
 cp .env.example .env
 # set HMAC_SECRET to ≥ 32 random chars
 docker compose up -d
 curl http://localhost:8787/health   # {"ok":true,...}</code></pre>
         </div>
-        <p class="muted">See <a href="https://github.com/gianlucamazza/agentroom/blob/main/cloudflared/README.md">cloudflared/README.md</a> for a stable public URL: named tunnel (Cloudflare Zero Trust token) or any reverse proxy with WebSocket upgrade.</p>
+        <p class="muted">See <a href="https://github.com/gianlucamazza/agentroom/blob/main/cloudflared/README.md">cloudflared/README.md</a> to give the relay a public URL that survives restarts: named tunnel (Cloudflare Zero Trust token) or any reverse proxy with WebSocket upgrade (optional).</p>
       </div>
     </div>
   </section>

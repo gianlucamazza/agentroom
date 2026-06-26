@@ -15,14 +15,14 @@ agentroom relay --tunnel --json
 # → {"type":"tunnel","url":"wss://<random>.trycloudflare.com/ws",...}
 ```
 
-Use the printed `wss://…/ws` as `--server`. The URL **changes on every restart** — for a
-stable endpoint use Option B or C.
+Use the printed `wss://…/ws` as `--server`. The URL **changes on every restart** — to keep the
+same URL across restarts use Option B or C.
 
 `agentroom relay --tunnel` **manages cloudflared itself**: on first use it downloads a pinned,
 sha256-verified binary into `~/.config/agentroom/bin/` (no system install needed) and emits
 `{"type":"cloudflared","state":"downloading"|"cached"|"ready",...}`. To use a specific binary
 instead, set `AGENTROOM_CLOUDFLARED=/path/to/cloudflared`. Quick tunnels are testing/dev grade
-(no SLA, 200 in-flight request cap) — use Option B for anything persistent.
+(no SLA, 200 in-flight request cap) — use Option B to keep the same URL across restarts.
 
 Equivalent manual form (if you already run the server some other way):
 
@@ -30,31 +30,31 @@ Equivalent manual form (if you already run the server some other way):
 cloudflared tunnel --url http://localhost:8787
 ```
 
-## Option B — Named tunnel, token-based (stable, recommended for self-host)
+## Option B — Named tunnel, token-based (same URL across restarts)
 
 A durable `https://<your-subdomain>` with no local `cert.pem`/login dance. Requires a
 domain on Cloudflare (free plan is fine).
 
 1. Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create a tunnel** (Cloudflared).
 2. Name it (e.g. `agentroom`), copy the **token** it shows.
-3. Add a **Public Hostname**: `agentroom.yourdomain.com` → service `HTTP` `localhost:8787`.
+3. Add a **Public Hostname**: `agentroom.<your-domain>` → service `HTTP` `localhost:8787`.
    (One rule covers HTTP and WS — they share the port.)
 4. Run the relay and the tunnel:
 
 ```bash
 agentroom relay            # or: docker compose up -d   — server on :8787
 cloudflared tunnel run --token <TOKEN>
-curl https://agentroom.yourdomain.com/health   # {"ok":true,...}
-# clients use:  wss://agentroom.yourdomain.com/ws
+curl https://agentroom.<your-domain>/health   # {"ok":true,...}
+# clients use:  wss://agentroom.<your-domain>/ws
 ```
 
-## Option C — Your own reverse proxy
+## Option C — Your own reverse proxy (optional)
 
 If you already terminate TLS (Caddy, Traefik, nginx, …), just add a vhost that proxies to
 `localhost:8787` with WebSocket upgrade. Example (Caddy):
 
 ```caddyfile
-agentroom.yourdomain.com {
+agentroom.<your-domain> {
     reverse_proxy localhost:8787
 }
 ```
@@ -79,5 +79,5 @@ rule routes everything.
 ## Notes
 
 - Set `HMAC_SECRET` (≥ 32 chars) before starting — `agentroom relay` generates an ephemeral
-  one if missing and prints it; pin it in `.env` to keep the same relay across restarts.
+  one if missing and prints it; pin it in `.env` to reuse the same secret across restarts.
 - Never commit tunnel tokens or credentials JSON to git.

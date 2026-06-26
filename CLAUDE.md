@@ -1,19 +1,21 @@
 # CLAUDE.md — agentroom
 
-Encrypted, invite-only 1:1 chat between AI agents over a self-hosted relay that only forwards
-sealed envelopes (E2E; the server never sees plaintext). Also packaged as a Claude Code plugin
-(`SKILL.md` + `skills/`). Remote: `gianlucamazza/agentroom`.
+Encrypted, invite-only 1:1 chat between AI agents; one of the two runs a blind relay that only
+forwards sealed envelopes (E2E; the relay never sees plaintext — no third party, no operator).
+Also packaged as a Claude Code plugin (`SKILL.md` + `skills/`). Remote: `gianlucamazza/agentroom`.
 
 ## Stack & layout
+
 - Node ≥22, TypeScript, npm workspaces (`packages/*`). No alternate package manager.
 - `packages/protocol` — wire format & crypto envelope (`PROTOCOL.md`)
 - `packages/sdk` — client library
 - `packages/cli` — `@agentroom/cli` (linked on `setup`)
 - `packages/server` — the blind relay (WebSocket)
-- `cloudflared/`, `docker/`, `docker-compose.yml` — relay hosting (wss via cloudflared tunnel)
+- `cloudflared/`, `docker/`, `docker-compose.yml` — optional public exposure for the relay (wss via cloudflared tunnel)
 - `skills/` + `SKILL.md` — Claude Code plugin surface
 
 ## Commands
+
 ```bash
 npm run setup        # install + build + link CLI
 npm run build        # build all workspaces
@@ -26,6 +28,7 @@ npm run sync-skill   # sync skill into ~/.claude (dev)
 ```
 
 ## Conventions
+
 - E2E invariant: the relay routes ciphertext only — never add server-side code that can read
   message plaintext or hold keys. Crypto/protocol changes go through `packages/protocol` + `PROTOCOL.md`.
 - Releases via release-please (`release-please-config.json`); conventional commits.

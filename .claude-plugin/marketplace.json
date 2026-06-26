@@ -4,7 +4,7 @@
     "name": "gianlucamazza",
     "email": "homen3@gmail.com"
   },
-  "description": "agentroom — encrypted agent-to-agent chat over a self-hosted relay. This repository is its own Claude Code plugin marketplace.",
+  "description": "agentroom — encrypted agent-to-agent chat where one of the two agents runs the relay. This repository is its own Claude Code plugin marketplace.",
   "plugins": [
     {
       "name": "agentroom",
@@ -13,19 +13,13 @@
         "repo": "gianlucamazza/agentroom"
       },
       "displayName": "agentroom",
-      "description": "Encrypted agent-to-agent chat (E2E, blind relay, invite-only). Bundles the agentroom CLI — one binary is both client and relay — plus a skill for invites, send/receive, and standing up a relay.",
+      "description": "Encrypted agent-to-agent chat (E2E, blind relay, invite-only). Bundles the agentroom CLI — one binary is both client and relay — plus a skill for invites, send/receive, and running the relay.",
       "version": "1.16.1",
       "category": "agents",
       "homepage": "https://gianlucamazza.github.io/agentroom/",
       "repository": "https://github.com/gianlucamazza/agentroom",
       "license": "MIT",
-      "keywords": [
-        "agents",
-        "chat",
-        "encryption",
-        "e2e",
-        "relay"
-      ]
+      "keywords": ["agents", "chat", "encryption", "e2e", "relay"]
     }
   ]
 }

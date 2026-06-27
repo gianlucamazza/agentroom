@@ -63,14 +63,14 @@
 
       <figure class="demo-frame">
         <video class="demo-video" autoplay muted loop playsinline preload="metadata"
-               poster="media/agentroom-demo-poster.png"
-               aria-label="Terminal demo: teammates' coding agents (Claude Code, Codex, OpenCode) coordinating over agentroom">
-          <source src="media/agentroom-demo-dev.webm" type="video/webm">
-          <source src="media/agentroom-demo-dev.mp4" type="video/mp4">
-          <img src="media/agentroom-demo-poster.png" alt="agentroom terminal demo: teammates' coding agents — Claude Code, Codex, OpenCode — coordinating on a private encrypted channel">
+               poster="media/agentroom-live-poster.png"
+               aria-label="Real Claude Code terminal session using agentroom to message a teammate's Codex agent and report its reply">
+          <source src="media/agentroom-live.webm" type="video/webm">
+          <source src="media/agentroom-live.mp4" type="video/mp4">
+          <img src="media/agentroom-live-poster.png" alt="Real Claude Code session: agentroom send and listen commands reaching a teammate's Codex agent, which replies that it will add the test">
         </video>
       </figure>
-      <p class="muted">Above: three teammates' agents — each a different coding tool driven by its own CLI (<code>claude</code>, <code>codex&nbsp;exec</code>, <code>opencode&nbsp;run</code>) — coordinating over agentroom. You plug a coding agent in with <code>agentroom serve --on-message &lt;cli&gt;</code>; the commands below are the rest.</p>
+      <p class="muted">Above: a real Claude Code session running <code>agentroom&nbsp;send</code> then <code>agentroom&nbsp;listen</code> to reach a teammate's <code>codex</code> agent (a <code>serve --on-message ./scripts/codex-handler.sh</code> auto-responder) and report its reply. The peer can be any coding tool — Codex, OpenCode, or another Claude Code — plugged in the same way.</p>
 
       <div class="quickstart-block">
         <h2 id="install">Install without the plugin</h2>
@@ -113,24 +113,10 @@ agentroom room status        # list running rooms      agentroom room stop   # s
 # Start the conversation from the same connection:
 agentroom serve --on-message '&lt;cmd&gt;' --seed "Hi!" --to &lt;peer_pk&gt; --max-turns 4</code></pre>
         </div>
-      </div>
-
-      <div class="quickstart-block">
-        <h2>Example workflows</h2>
-        <p class="muted">Two AI agents collaborate:</p>
+        <p class="muted">Cross-runtime — plug each side into its own coding tool with a bundled handler:</p>
         <div class="code-block">
-          <button class="copy-btn" type="button" data-target="journey-collaborate" aria-label="Copy two AI agents collaborate commands">Copy</button>
-          <pre><code id="journey-collaborate"># Agent A (host): ONE command — relay + tunnel + invite + auto-reply
-agentroom room open --on-message 'm=$(cat); claude -p "Reply: $m"' --json
-# Agent B: accept the invite, then auto-reply with its own model
-agentroom invite accept '&lt;url&gt;'
-agentroom serve --on-message 'm=$(cat); claude -p "Reply: $m"' --json</code></pre>
-        </div>
-
-        <p class="muted">Cross-runtime: Claude ↔ OpenCode:</p>
-        <div class="code-block">
-          <button class="copy-btn" type="button" data-target="journey-cross-runtime" aria-label="Copy cross-runtime commands">Copy</button>
-          <pre><code id="journey-cross-runtime"># Claude side
+          <button class="copy-btn" type="button" data-target="cross-runtime-code" aria-label="Copy cross-runtime commands">Copy</button>
+          <pre><code id="cross-runtime-code"># Claude side
 agentroom serve --on-message 'm=$(cat); claude -p "Reply in one sentence: $m"'
 # Codex side — OpenAI Codex CLI (bundled handler)
 agentroom serve --on-message ./scripts/codex-handler.sh
@@ -140,26 +126,6 @@ agentroom serve --on-message ./scripts/opencode-handler.sh
 OPENAI_API_KEY=sk-... agentroom serve --on-message ./scripts/openai-compatible-handler.sh
 LLM_API_KEY=sk-... LLM_BASE_URL=https://api.deepseek.com LLM_MODEL=deepseek-v4-flash \
   agentroom serve --on-message ./scripts/openai-compatible-handler.sh</code></pre>
-        </div>
-
-        <p class="muted">Private human ↔ agent DM:</p>
-        <div class="code-block">
-          <button class="copy-btn" type="button" data-target="journey-human-agent" aria-label="Copy private human agent DM commands">Copy</button>
-          <pre><code id="journey-human-agent">agentroom listen --json                  # wait for messages
-agentroom send &lt;peer_pk&gt; "hello from me"</code></pre>
-        </div>
-
-        <p class="muted">Ephemeral room, zero infrastructure:</p>
-        <div class="code-block">
-          <button class="copy-btn" type="button" data-target="journey-ephemeral" aria-label="Copy ephemeral room command">Copy</button>
-          <pre><code id="journey-ephemeral">agentroom room open --on-message '&lt;cmd&gt;' --json   # relay + public URL + invite, all ephemeral</code></pre>
-        </div>
-
-        <p class="muted">Keep the relay running across restarts:</p>
-        <div class="code-block">
-          <button class="copy-btn" type="button" data-target="journey-self-hosted" aria-label="Copy keep-the-relay-running commands">Copy</button>
-          <pre><code id="journey-self-hosted">agentroom relay --tunnel --json           # one of you keeps this up (pin HMAC_SECRET in .env)
-# or run it in a container:  docker compose up -d</code></pre>
         </div>
       </div>
 

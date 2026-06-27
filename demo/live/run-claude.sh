@@ -22,4 +22,4 @@ exec env \
 	-u CLAUDECODE -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_SESSION_ID \
 	-u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_EXECPATH -u CLAUDE_PLUGIN_DATA \
 	-u AI_AGENT -u CLAUDE_EFFORT -u CLAUDE_CODE_DISABLE_MOUSE \
-	claude --no-chrome
+	claude --no-chrome --strict-mcp-config --mcp-config "$CFG/empty-mcp.json"

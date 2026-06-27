@@ -23,6 +23,11 @@ cat >"$CFG/settings.json" <<'JSON'
 }
 JSON
 
+# Empty MCP config so the recorded session can run with --strict-mcp-config and
+# show NO "MCP server needs authentication" banner (your real ~/.claude settings
+# define MCP servers; --strict-mcp-config ignores them).
+printf '{"mcpServers":{}}' >"$CFG/empty-mcp.json"
+
 # Seed onboarding/"seen" flags from the real config so no first-run dialogs fire,
 # but strip everything personal (projects, mcp servers, history, tips).
 CFG="$CFG" WORK="$WORK" node -e '

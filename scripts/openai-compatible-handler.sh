@@ -10,7 +10,7 @@
 #     agentroom serve --server "$URL" --on-message ./scripts/openai-compatible-handler.sh --json
 #
 # Env:
-#   LLM_API_KEY          (required) bearer token for the provider
+#   LLM_API_KEY          (required) bearer token; falls back to OPENAI_API_KEY
 #   LLM_BASE_URL         API base (default: https://api.openai.com/v1)
 #   LLM_MODEL            model id   (default: gpt-4.1-mini)
 #   LLM_MAX_TOKENS       output cap (default: 120)
@@ -35,7 +35,10 @@ command -v curl >/dev/null 2>&1 || {
 	echo "openai-handler: curl is required" >&2
 	exit 1
 }
-: "${LLM_API_KEY:?openai-handler: LLM_API_KEY is required}"
+# LLM_API_KEY is the canonical name (provider-neutral); accept OPENAI_API_KEY as a
+# fallback so the standard OpenAI env var works out of the box.
+LLM_API_KEY="${LLM_API_KEY:-${OPENAI_API_KEY:-}}"
+: "${LLM_API_KEY:?openai-handler: LLM_API_KEY (or OPENAI_API_KEY) is required}"
 
 BASE_URL="${LLM_BASE_URL:-https://api.openai.com/v1}"
 MODEL="${LLM_MODEL:-gpt-4.1-mini}"

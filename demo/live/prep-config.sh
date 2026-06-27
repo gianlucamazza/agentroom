@@ -18,7 +18,7 @@ cat >"$CFG/settings.json" <<'JSON'
   "theme": "dark",
   "includeCoAuthoredBy": false,
   "permissions": {
-    "allow": ["Bash(agentroom:*)", "Bash(timeout:*)", "Bash(echo:*)"]
+    "allow": ["Bash(agentroom:*)", "Bash(bash:*)", "Bash(timeout:*)", "Bash(echo:*)"]
   }
 }
 JSON

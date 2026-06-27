@@ -23,7 +23,7 @@ bash "$ROOT/demo/live/prep-config.sh" >/dev/null
 TASK="Bob, can your agent add the invite-fallback regression test on the auth branch?"
 # Typed prompt: natural ask + the exact agentroom commands to run (no single quotes,
 # so it can sit inside a VHS single-quoted Type).
-PROMPT="Reach my teammate over agentroom and tell me their reply in one short line. Run: agentroom send $PEER_PK \"$TASK\" --home $ALICE_HOME --server $SERVER_URL  then run: timeout -s KILL 18 agentroom listen --home $ALICE_HOME --server $SERVER_URL --json 2>/dev/null | grep -m1 message || true"
+PROMPT="Reach my teammate over agentroom and tell me their reply in one short line. Run: agentroom send $PEER_PK \"$TASK\" --home $ALICE_HOME --server $SERVER_URL  then run: bash $ROOT/demo/live/listen-once.sh $ALICE_HOME $SERVER_URL 40"
 
 TAPE="$STATE_DIR/live.gen.tape"
 cat >"$TAPE" <<TAPEEOF

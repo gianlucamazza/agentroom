@@ -21797,12 +21797,24 @@ async function cmdPeers(args) {
 
 // packages/cli/src/commands/setup.ts
 import { randomBytes as randomBytes2 } from "crypto";
-import { readFileSync as readFileSync5, writeFileSync as writeFileSync4, mkdirSync as mkdirSync4, existsSync as existsSync7, unlinkSync as unlinkSync3, rmSync as rmSync2, chmodSync as chmodSync4 } from "fs";
+import {
+  readFileSync as readFileSync5,
+  writeFileSync as writeFileSync4,
+  mkdirSync as mkdirSync4,
+  existsSync as existsSync7,
+  unlinkSync as unlinkSync3,
+  rmSync as rmSync2,
+  chmodSync as chmodSync4
+} from "fs";
 import path5 from "path";
 init_dist();
+function healthUrl(serverUrl) {
+  return serverUrl.replace(/^ws/, "http").replace(/\/ws$/, "").replace(/\/$/, "") + "/health";
+}
 async function cmdSetup(args) {
   const jsonMode = args.includes("--json");
   const forceMode = args.includes("--force");
+  const noProbe = args.includes("--no-probe");
   const cwdIdx = args.indexOf("--cwd");
   const cwd = cwdIdx >= 0 ? args[cwdIdx + 1] ?? process.cwd() : process.cwd();
   const homeIdx = args.indexOf("--home");
@@ -21817,30 +21829,31 @@ async function cmdSetup(args) {
   const steps = [];
   const envFile = path5.resolve(cwd, ".env");
   const envExample = path5.resolve(cwd, ".env.example");
-  if (!existsSync7(envFile)) {
-    if (!existsSync7(envExample)) {
-      const msg = `.env.example not found at ${cwd}. Run this command from the agentroom repo root.`;
-      if (jsonMode) console.log(JSON.stringify({ ready: false, error: msg }));
-      else console.error(`error: ${msg}`);
-      process.exit(EXIT_USAGE);
+  const inRepo = existsSync7(envFile) || existsSync7(envExample);
+  let dataDir;
+  if (inRepo) {
+    if (!existsSync7(envFile)) {
+      const secret2 = randomBytes2(32).toString("hex");
+      const content = readFileSync5(envExample, "utf8").replace(
+        /^HMAC_SECRET=.*$/m,
+        `HMAC_SECRET=${secret2}`
+      );
+      writeFileSync4(envFile, content, { encoding: "utf8" });
+      chmodSync4(envFile, 384);
+      steps.push({ step: "env", status: "created" });
+    } else {
+      steps.push({ step: "env", status: "skipped" });
     }
-    const secret2 = randomBytes2(32).toString("hex");
-    const content = readFileSync5(envExample, "utf8").replace(
-      /^HMAC_SECRET=.*$/m,
-      `HMAC_SECRET=${secret2}`
-    );
-    writeFileSync4(envFile, content, { encoding: "utf8" });
-    chmodSync4(envFile, 384);
-    steps.push({ step: "env", status: "created" });
+    dataDir = path5.resolve(cwd, "data");
+    mkdirSync4(dataDir, { recursive: true });
+    steps.push({ step: "data/", status: "ok" });
   } else {
     steps.push({ step: "env", status: "skipped" });
   }
-  const dataDir = path5.resolve(cwd, "data");
-  mkdirSync4(dataDir, { recursive: true });
-  steps.push({ step: "data/", status: "ok" });
   const idPath = identityPath(home);
   if (forceMode && existsSync7(idPath)) {
-    if (!jsonMode) console.warn(`warning: --force: removing existing identity at ${idPath}`);
+    if (!jsonMode)
+      console.warn(`warning: --force: removing existing identity at ${idPath}`);
     unlinkSync3(idPath);
     rmSync2(sessionsDir(home), { recursive: true, force: true });
   }
@@ -21850,8 +21863,34 @@ async function cmdSetup(args) {
   const x25519Pk = toBase64(identity.x25519_pk);
   steps.push({ step: "identity", status: isNew ? "created" : "skipped" });
   const cf = detectCloudflared(home);
+  const serverUrlFile = path5.join(configBase(home), "server_url");
+  const serverUrl = existsSync7(serverUrlFile) ? readFileSync5(serverUrlFile, "utf8").trim() : "";
+  let reachable;
+  if (serverUrl && !noProbe) {
+    try {
+      const r = await fetch(healthUrl(serverUrl), {
+        signal: AbortSignal.timeout(3e3)
+      });
+      reachable = r.ok;
+    } catch {
+      reachable = false;
+    }
+  }
   if (jsonMode) {
-    console.log(JSON.stringify({ ready: true, pk, x25519_pk: x25519Pk, identity_path: idPath, env_path: envFile, data_dir: dataDir, cloudflared: cf, steps }));
+    console.log(
+      JSON.stringify({
+        ready: true,
+        pk,
+        x25519_pk: x25519Pk,
+        identity_path: idPath,
+        env_path: inRepo ? envFile : void 0,
+        data_dir: dataDir,
+        cloudflared: cf,
+        server_url: serverUrl,
+        ...reachable !== void 0 ? { reachable } : {},
+        steps
+      })
+    );
     return;
   }
   for (const s of steps) {
@@ -21862,10 +21901,20 @@ async function cmdSetup(args) {
   console.log();
   console.log(`  ed25519_pk: ${pk}`);
   console.log(`  x25519_pk:  ${x25519Pk}`);
+  if (serverUrl) {
+    console.log(
+      `  server_url: ${serverUrl}${reachable === void 0 ? "" : reachable ? " (reachable)" : " (unreachable)"}`
+    );
+  }
   console.log();
   console.log("Ready. Next steps:");
-  console.log("  npm run dev              # start relay server on :8787");
-  console.log("  agentroom invite create  # create an invite for a peer");
+  if (serverUrl) {
+    console.log("  agentroom invite create  # create an invite for a peer");
+  } else {
+    console.log(
+      "  agentroom room open --on-message '<cmd>'  # relay + tunnel + invite, one command"
+    );
+  }
 }
 
 // packages/cli/src/index.ts

@@ -1,6 +1,6 @@
 {
   "name": "agentroom",
-  "version": "1.17.3",
+  "version": "1.17.5",
   "private": true,
   "workspaces": [
     "packages/*"
@@ -23,6 +23,6 @@
     "@types/node": "^26",
     "tsup": "^8.1.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }

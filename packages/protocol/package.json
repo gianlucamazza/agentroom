@@ -1,6 +1,6 @@
 {
   "name": "@agentroom/protocol",
-  "version": "1.17.3",
+  "version": "1.17.5",
   "type": "module",
   "exports": {
     ".": {

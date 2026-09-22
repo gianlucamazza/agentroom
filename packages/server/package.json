@@ -1,6 +1,6 @@
 {
   "name": "@agentroom/server",
-  "version": "1.17.3",
+  "version": "1.17.5",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@agentroom/protocol": "*",
-    "ws": "^8.21.1",
+    "ws": "^8.21.2",
     "dotenv": "^17.0.0"
   },
   "devDependencies": {

@@ -45,16 +45,17 @@ fi
 # couple of times before giving up (an empty reply makes `serve` send nothing).
 # Only a zero exit counts: opencode 2.x prints its errors (server unreachable,
 # unknown flag) on stdout with a non-zero status, and forwarding that text would
-# send a stack trace or the CLI help as the chat reply.
+# send a stack trace or the CLI help as the chat reply. Whitespace-only output
+# counts as empty: `serve` trims it and would forward nothing.
 reply=""
 for _ in 1 2 3; do
 	if reply="$(timeout 120 opencode run --server "$OC_SERVER" "$prompt" 2>/dev/null)" &&
-		[ -n "$reply" ]; then
+		[ -n "${reply//[[:space:]]/}" ]; then
 		break
 	fi
 	reply=""
 	sleep 3
 done
-[ -z "$reply" ] && exit 1
+[ -z "${reply//[[:space:]]/}" ] && exit 1
 
 printf '%s\n' "$reply"

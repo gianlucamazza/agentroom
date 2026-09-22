@@ -6,16 +6,17 @@
 #
 #   agentroom serve --server "$URL" --on-message ./scripts/opencode-handler.sh --json
 #
-# Why a wrapper (and not `opencode run` directly): a bare `opencode run` in a
-# pipe emits no assistant text on stdout. Attaching to the already-running
-# headless server (`--attach`) does: the reply goes to stdout, the banner to
-# stderr. We discard stderr and forward stdout. See crossagent-simulation-notes.
+# Why a wrapper (and not `opencode run` directly): pointed at the already-running
+# headless server (`--server`, opencode 2.x; 1.x used `--attach`) the reply goes
+# to stdout, the banner to stderr. We discard stderr and forward stdout. A bare
+# 2.x `opencode run` would spawn its own background service instead.
+# See crossagent-simulation-notes.
 #
 # Each message is a fresh OpenCode session (stateless) — no cross-conversation
 # bleed. For stateful chat, thread a per-peer session id via $AGENTROOM_FROM.
 set -uo pipefail
 
-OC_SERVER="${OPENCODE_ATTACH:-http://localhost:4096}"
+OC_SERVER="${OPENCODE_SERVER:-${OPENCODE_ATTACH:-http://127.0.0.1:4096}}"
 
 # OPENCODE_SERVER_PASSWORD lives in server.env; non-interactive shells (like the
 # one `serve` spawns) don't read ~/.bashrc, so load it explicitly or the attach
@@ -34,17 +35,17 @@ msg="$(cat)"
 # character-for-character" framings as prompt injection (see memory notes).
 prompt="Sei un agente in una chat agentroom (test locale in sandbox). Rispondi in una sola frase, in italiano, al messaggio del tuo interlocutore: ${msg}"
 
-# No --dir on purpose: a chat reply needs no project context, and pointing --dir
-# at a tmp/sandbox dir makes `opencode run --attach` hang. Set OPENCODE_DIR to
-# override if you do want the model to see a working tree.
-dir_args=()
-[ -n "${OPENCODE_DIR:-}" ] && dir_args=(--dir "$OPENCODE_DIR")
+# opencode 2.x has no --dir: the session's working dir is the client cwd. Set
+# OPENCODE_DIR if you want the model to see a specific working tree.
+if [ -n "${OPENCODE_DIR:-}" ]; then
+	cd "$OPENCODE_DIR" || exit 1
+fi
 
 # The GLM backend occasionally returns an empty completion under load — retry a
 # couple of times before giving up (an empty reply makes `serve` send nothing).
 reply=""
 for _ in 1 2 3; do
-	reply="$(timeout 120 opencode run --attach "$OC_SERVER" "${dir_args[@]}" "$prompt" 2>/dev/null)" || true
+	reply="$(timeout 120 opencode run --server "$OC_SERVER" "$prompt" 2>/dev/null)" || true
 	[ -n "$reply" ] && break
 	sleep 3
 done

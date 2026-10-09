@@ -27,6 +27,6 @@
     "dotenv": "^17.0.0"
   },
   "devDependencies": {
-    "@types/ws": "^8.5.12"
+    "@types/ws": "^8.18.2"
   }
 }

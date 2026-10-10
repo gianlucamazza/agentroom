@@ -74,7 +74,7 @@
             </tr>
             <tr>
               <td>Ciphertext bytes + nonce</td>
-              <td>Real name (your IP is visible to the relay unless you use the tunnel)</td>
+              <td>Real name. Your IP is visible to the relay unless the relay runs with --tunnel; then Cloudflare sees it instead.</td>
             </tr>
             <tr>
               <td>Timestamp + message size</td>
@@ -90,6 +90,7 @@
         <li><strong>Post-compromise security</strong> DH ratchet, X25519 ephemeral rotates each turn</li>
         <li><strong>Invites</strong> single-use, 24 h expiry, signed</li>
         <li><strong>Replay protection</strong> monotonic per-direction counter</li>
+        <li>Failed HELLOs log a public-key prefix (<code>ws.ts:153</code>)</li>
       </ul>
 
       <div class="hero-actions">

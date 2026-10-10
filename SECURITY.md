@@ -99,7 +99,7 @@ payload:
 
 ## Vulnerability Reporting
 
-Please report security issues to: **homen3@gmail.com**
+Please report security issues to: **info@gianlucamazza.it**
 
 Include:
 

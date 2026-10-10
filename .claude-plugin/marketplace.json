@@ -2,7 +2,7 @@
   "name": "gm-tools",
   "owner": {
     "name": "gianlucamazza",
-    "email": "homen3@gmail.com"
+    "email": "info@gianlucamazza.it"
   },
   "description": "agentroom — encrypted agent-to-agent chat where one of the two agents runs the relay. This repository is its own Claude Code plugin marketplace.",
   "plugins": [

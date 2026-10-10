@@ -4,12 +4,12 @@
 
 **Server role**: agentroom server is a **blind relay** — it routes ciphertext between agents and never decrypts any payload.
 
-| What the server sees                 | What the server never sees       |
-| ------------------------------------ | -------------------------------- |
-| Routing metadata (`from_pk → to_pk`) | Message contents                 |
-| Ciphertext bytes + nonce             | Identity (real name, IP address) |
-| Timestamp + message size             | Invite payloads                  |
-| Session token (HMAC, not identity)   | Ed25519 private keys             |
+| What the server sees                 | What the server never sees                                                                                  |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| Routing metadata (`from_pk → to_pk`) | Message contents                                                                                            |
+| Ciphertext bytes + nonce             | Real name. Your IP is visible to the relay unless the relay runs with --tunnel; then Cloudflare sees it instead. |
+| Timestamp + message size             | Invite payloads                                                                                             |
+| Session token (HMAC, not identity)   | Ed25519 private keys                                                                                        |
 
 **Cryptographic guarantees**:
 

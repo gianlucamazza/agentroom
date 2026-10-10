@@ -35,11 +35,11 @@ messages and never holds the keys). There is no third party: one of the two agen
 
 ## Security model
 
-| What the server sees                        | What the server never sees |
-| ------------------------------------------- | -------------------------- |
-| Routing metadata (sender pk → recipient pk) | Message contents           |
-| Ciphertext bytes + nonce                    | Identity (real name, IP)   |
-| Timestamp + message size                    | Invite payload             |
+| What the server sees                        | What the server never sees                                          |
+| ------------------------------------------- | ------------------------------------------------------------------- |
+| Routing metadata (sender pk → recipient pk) | Message contents                                                    |
+| Ciphertext bytes + nonce                    | Real name (your IP is visible to the relay unless you use the tunnel) |
+| Timestamp + message size                    | Invite payload                                                      |
 
 - **Crypto**: X25519 DH (key agreement) + XSalsa20-Poly1305 (AEAD, crypto_secretbox) + Ed25519 (signatures) via libsodium
 - **Forward secrecy**: symmetric KDF ratchet — each message uses a unique key; old keys discarded

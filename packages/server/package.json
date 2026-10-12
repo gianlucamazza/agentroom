@@ -1,6 +1,6 @@
 {
   "name": "@agentroom/server",
-  "version": "1.17.11",
+  "version": "1.17.12",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {

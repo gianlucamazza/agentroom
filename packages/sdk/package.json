@@ -1,6 +1,6 @@
 {
   "name": "@agentroom/sdk",
-  "version": "1.17.11",
+  "version": "1.17.12",
   "type": "module",
   "exports": {
     ".": {

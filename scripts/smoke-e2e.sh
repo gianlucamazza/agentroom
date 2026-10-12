@@ -31,11 +31,49 @@ fail() {
 
 wait_for() {
 	local file="$1" pattern="$2" max_s="${3:-5}"
-	for _ in $(seq 1 "$((max_s * 5))"); do
+	local deadline=$((SECONDS + max_s))
+	while :; do
+		# -F/-- : treat $pattern as a literal (messages are not regexes)
+		grep -F -q -- "$pattern" "$file" 2>/dev/null && return 0
+		[ "$SECONDS" -ge "$deadline" ] && return 1
 		sleep 0.2
-		grep -q "$pattern" "$file" 2>/dev/null && return 0
 	done
-	return 1
+}
+
+# True iff `peers --json` lists $pk. Must not feed the pk to grep as a PATTERN
+# without -F/-- : ed25519 pks are base64url and can start with "-" (e.g. "-f…"),
+# which GNU grep then treats as options — "grep: <rest>: No such file or
+# directory" — so the poll never succeeds and CI flakes
+# "alice not in bob's peers list" (PR #141 run 38219476066).
+peers_lists() {
+	local home="$1" pk="$2"
+	local json
+	json=$($AR peers --home "$home" --json 2>/dev/null) || return 1
+	# Exact JSON field match via node (required on this script) so a pk that
+	# looks like a grep flag cannot be misparsed, and we don't substring-hit
+	# another row. "No sessions found" is not JSON → exit 1.
+	WANT_PK="$pk" node -e '
+		const want = process.env.WANT_PK;
+		let raw;
+		try { raw = require("fs").readFileSync(0, "utf8"); } catch { process.exit(1); }
+		try {
+			const rows = JSON.parse(raw);
+			process.exit(Array.isArray(rows) && rows.some((r) => r && r.pk === want) ? 0 : 1);
+		} catch { process.exit(1); }
+	' <<<"$json" || return 1
+}
+
+# Poll until the session is visible in `peers`. The sessions-dir write can lag
+# the CLI process that created it (invite accept / send), so wait on the
+# condition with a bounded timeout rather than a single-shot read or a sleep.
+wait_for_peer() {
+	local home="$1" pk="$2" max_s="${3:-10}"
+	local deadline=$((SECONDS + max_s))
+	while :; do
+		peers_lists "$home" "$pk" && return 0
+		[ "$SECONDS" -ge "$deadline" ] && return 1
+		sleep 0.2
+	done
 }
 
 # Wait until at least N agents are connected (uses /metrics ws_connections — live WS count,
@@ -121,6 +159,12 @@ log "bob accepts invite..."
 # SESSION_INIT is queued for Alice. Use || true so set -e doesn't abort on exit code 3.
 $AR invite accept "$INVITE_URL" --home "$BOB_HOME" --server "$SERVER_WS" >/dev/null || true
 sleep 0.5 # wait for SESSION_INIT to be queued for Alice
+# Accept persists the session locally even if Alice is offline; wait until
+# `peers` can see it (don't race the sessions-dir write).
+wait_for_peer "$BOB_HOME" "$ALICE_PK" 10 || {
+	log "bob peers: $($AR peers --home "$BOB_HOME" --json 2>/dev/null || echo '(unavailable)')"
+	fail "invite accept: alice not in bob's peers list"
+}
 
 # ════════════════════════════════════════════════════════════════════
 # SCENARIO 1: Basic send → receive
@@ -160,17 +204,12 @@ pass "scenario 2: session persistence OK"
 kill "$LISTEN_PID" 2>/dev/null
 LISTEN_PID=""
 
-# Verify bob sees alice in peers list (sessions dir). The sessions dir write can
-# lag the listen process exit, so retry instead of a single-shot read (flaky).
-wait_for_peer() {
-	local home="$1" pk="$2" max_s="${3:-5}"
-	for _ in $(seq 1 "$((max_s * 5))"); do
-		sleep 0.2
-		$AR peers --home "$home" --json 2>/dev/null | grep -q "$pk" && return 0
-	done
-	return 1
+# Session file is written by bob's send / invite accept; poll until `peers`
+# lists alice (don't assert once — the write can lag process exit).
+wait_for_peer "$BOB_HOME" "$ALICE_PK" 10 || {
+	log "bob peers: $($AR peers --home "$BOB_HOME" --json 2>/dev/null || echo '(unavailable)')"
+	fail "scenario 2: alice not in bob's peers list"
 }
-wait_for_peer "$BOB_HOME" "$ALICE_PK" 5 || fail "scenario 2: alice not in bob's peers list"
 pass "scenario 2: peers list correct"
 
 # ════════════════════════════════════════════════════════════════════

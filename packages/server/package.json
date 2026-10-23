@@ -24,7 +24,7 @@
   "dependencies": {
     "@agentroom/protocol": "*",
     "ws": "^8.22.0",
-    "dotenv": "^18.0.7"
+    "dotenv": "^18.0.8"
   },
   "devDependencies": {
     "@types/ws": "^8.18.2"
